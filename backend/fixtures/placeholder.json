@@ -1,2 +1,7 @@
-// placeholder.json
-// Mock extraction output for a test document. Owned by Ammar
+{
+  "_note": "Placeholder fixture. Replaced by a real Evolus response when one is captured. Owned by Ammar",
+  "status": "placeholder",
+  "extracted": null,
+  "confidence": {},
+  "issues": []
+}

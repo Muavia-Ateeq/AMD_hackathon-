@@ -1,1 +1,5 @@
-// Mocks placeholder for API responses. Owned by Moyeon
+{
+  "_note": "Placeholder for aggregated API responses. See mocks/server.js for the live mock server and mocks/documents.list.json for a populated list. Owned by Moyeon",
+  "documents": [],
+  "nextCursor": null
+}
