@@ -1,73 +1,79 @@
-// seed/seed.js
+// backend/seed/seed.js
 // Run with: npm run seed
-// Populates Supplier and PurchaseOrder collections.
+// Populates the Supplier and PurchaseOrder collections with a deterministic
+// demo dataset aligned with the fixtures in backend/fixtures and mocks/.
+//
+// Deliberately NOT random: the mock scenarios in mocks/document.*.json are
+// written against these exact suppliers, PO numbers and bank accounts, so
+// that every rule path is reproducible.
+//
+// Note on PO totals: poMatch compares the invoice's tax-inclusive `total`
+// against the purchase order `total`, while `lines` sum pre-tax. PO-2001
+// therefore has lines summing to 220.00 and a total of 242.00 (220 + 10%
+// tax), matching mocks/orders.json. See docs/api.md for the semantics.
+
 const mongoose = require('mongoose');
 const path = require('path');
 const fs = require('fs');
-const Supplier = require('../src/models/supplier');
-const PurchaseOrder = require('../src/models/purchaseOrder');
+
+require('dotenv').config();
+
+// Model file names are capitalised. These were previously required as
+// '../src/models/supplier' and '../src/models/purchaseOrder', which resolves
+// on a case-insensitive Windows filesystem but fails with MODULE_NOT_FOUND in
+// the Linux container.
+const Supplier = require('../src/models/Supplier');
+const PurchaseOrder = require('../src/models/PurchaseOrder');
+
+function loadJson(filePath, label) {
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`Seed fixture not found: ${filePath}`);
+  }
+  try {
+    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    if (!Array.isArray(parsed)) {
+      throw new Error(`${label} must be a JSON array`);
+    }
+    return parsed;
+  } catch (err) {
+    // Previously this threw a bare SyntaxError, because the fixture files
+    // held only `//` comments rather than JSON.
+    throw new Error(`Could not parse ${label} at ${filePath}: ${err.message}`);
+  }
+}
 
 (async () => {
   try {
     const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/supplier-docs';
-    await mongoose.connect(mongoUri, { useNewUrlParser: true, useUnifiedTopology: true });
-    console.log('Connected to MongoDB');
+    await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 5000 });
+    console.log(`Connected to MongoDB at ${mongoUri}`);
 
-    const suppliersPath = path.resolve(__dirname, 'suppliers.json');
-    const poPath = path.resolve(__dirname, 'purchaseOrders.json');
+    const suppliers = loadJson(path.resolve(__dirname, 'suppliers.json'), 'suppliers.json');
+    const purchaseOrders = loadJson(path.resolve(__dirname, 'purchaseOrders.json'), 'purchaseOrders.json');
+    console.log(`Loaded ${suppliers.length} suppliers and ${purchaseOrders.length} purchase orders`);
 
-    let suppliers = [];
-    if (fs.existsSync(suppliersPath)) {
-      suppliers = JSON.parse(fs.readFileSync(suppliersPath, 'utf8'));
-      console.log(`Loaded ${suppliers.length} suppliers from fixture`);
-    } else {
-      // Generate fake suppliers (8)
-      const faker = require('faker');
-      for (let i = 0; i < 8; i++) {
-        suppliers.push({
-          name: faker.company.companyName(),
-          bankAccount: faker.finance.iban(),
-          currency: 'USD',
-          contactEmail: faker.internet.email(),
-          isApproved: true
-        });
-      }
-      console.log('Generated fake suppliers');
+    const supplierNames = new Set(suppliers.map(s => s.name));
+    const orphans = purchaseOrders.filter(po => !supplierNames.has(po.supplierName));
+    if (orphans.length > 0) {
+      throw new Error(
+        `Purchase orders reference unknown suppliers: ${orphans.map(p => p.poNumber).join(', ')}`
+      );
     }
 
-    let purchaseOrders = [];
-    if (fs.existsSync(poPath)) {
-      purchaseOrders = JSON.parse(fs.readFileSync(poPath, 'utf8'));
-      console.log(`Loaded ${purchaseOrders.length} purchase orders from fixture`);
-    } else {
-      const faker = require('faker');
-      for (let i = 0; i < 20; i++) {
-        const items = [];
-        const lineCount = faker.datatype.number({ min: 1, max: 5 });
-        for (let j = 0; j < lineCount; j++) {
-          const qty = faker.datatype.number({ min: 1, max: 10 });
-          const unitPrice = faker.datatype.number({ min: 10, max: 500, precision: 0.01 });
-          items.push({ description: faker.commerce.productName(), qty, unitPrice });
-        }
-        const total = items.reduce((s, it) => s + it.qty * it.unitPrice, 0);
-        purchaseOrders.push({
-          poNumber: `PO-${1000 + i}`,
-          supplierName: suppliers[i % suppliers.length].name,
-          items,
-          total: Math.round(total * 100) / 100
-        });
-      }
-      console.log('Generated fake purchase orders');
-    }
+    await Promise.all([
+      Supplier.deleteMany({}),
+      PurchaseOrder.deleteMany({})
+    ]);
 
-    await Supplier.deleteMany({});
-    await PurchaseOrder.deleteMany({});
     await Supplier.insertMany(suppliers);
     await PurchaseOrder.insertMany(purchaseOrders);
-    console.log('Seed data written to database');
+
+    console.log(`Seeded ${suppliers.length} suppliers and ${purchaseOrders.length} purchase orders`);
+    await mongoose.connection.close();
     process.exit(0);
   } catch (err) {
-    console.error('Seeding failed:', err);
+    console.error('Seeding failed:', err.message);
+    await mongoose.connection.close().catch(() => {});
     process.exit(1);
   }
 })();

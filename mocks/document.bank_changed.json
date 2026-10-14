@@ -6,7 +6,7 @@
     "supplierName": "Omega Banking",
     "language": "en",
     "type": "invoice",
-    "status": "needs_review",
+    "status": "rejected",
     "extracted": {
       "invoiceNumber": "INV-7007",
       "date": "2026-09-05",

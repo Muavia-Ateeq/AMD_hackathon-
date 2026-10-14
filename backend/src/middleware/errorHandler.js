@@ -9,11 +9,13 @@ function errorHandler(err, req, res, next) {
 
   const statusCode = err.statusCode || err.status || 500;
 
-  // Only surface the raw message for client errors (4xx). 5xx messages come
+  // Only surface the raw message for client errors (4xx), or for errors the
+  // thrower explicitly marked as safe to expose. 5xx messages otherwise come
   // from internal machinery (Mongoose buffering, axios, Zod) and would leak
-  // implementation detail, so they are replaced with a generic string.
+  // implementation detail to the client.
   const isClientError = statusCode >= 400 && statusCode < 500;
-  const message = isClientError && err.message
+  const isExposed = err.expose === true;
+  const message = (isClientError || isExposed) && err.message
     ? err.message
     : 'An unexpected error occurred';
 

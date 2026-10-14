@@ -1,2 +1,58 @@
-// suppliers.json
-// Mock supplier data for seeding. Owned by Ammar
+[
+  {
+    "name": "Alpha Supplies",
+    "bankAccount": "111222333",
+    "currency": "USD",
+    "contactEmail": "billing@alphasupplies.example",
+    "isApproved": true
+  },
+  {
+    "name": "Omega Supplies",
+    "bankAccount": "222333444",
+    "currency": "USD",
+    "contactEmail": "accounts@omegasupplies.example",
+    "isApproved": true
+  },
+  {
+    "name": "Sigma Parts",
+    "bankAccount": "444555666",
+    "currency": "USD",
+    "contactEmail": "invoices@sigmaparts.example",
+    "isApproved": true
+  },
+  {
+    "name": "Theta Instruments",
+    "bankAccount": "333444555",
+    "currency": "USD",
+    "contactEmail": "finance@thetainstruments.example",
+    "isApproved": true
+  },
+  {
+    "name": "Kappa Enterprises",
+    "bankAccount": "777888999",
+    "currency": "USD",
+    "contactEmail": "ap@kappaenterprises.example",
+    "isApproved": true
+  },
+  {
+    "name": "Lambda Supplies",
+    "bankAccount": "555666777",
+    "currency": "USD",
+    "contactEmail": "billing@lambdasupplies.example",
+    "isApproved": true
+  },
+  {
+    "name": "Omega Banking",
+    "bankAccount": "111000999",
+    "currency": "USD",
+    "contactEmail": "invoices@omegabanking.example",
+    "isApproved": true
+  },
+  {
+    "name": "Unknown Vendor Ltd",
+    "bankAccount": "999000111",
+    "currency": "USD",
+    "contactEmail": "ap@unknownvendor.example",
+    "isApproved": false
+  }
+]
