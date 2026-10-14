@@ -59,10 +59,13 @@ These are real and not yet addressed. None blocks the demo.
 1. **No authentication on the API.** All nine endpoints are open. The webhook
    is the only authenticated route. Deploy behind a gateway or add auth before
    exposing this beyond a demo.
-2. **No end-to-end test against a live MongoDB.** Docker was unavailable and no
-   local `mongod` is installed. DB-backed paths are covered by unit and route
-   tests only. Add `mongodb-memory-server` for CI.
-3. **No CI pipeline.** `npm test` runs locally and in review, not on push.
+2. **No end-to-end test against a live MongoDB in the unit suite.** The Docker
+   CI job does cover this path: it starts MongoDB, boots the backend, waits for
+   the container healthcheck, runs the seed script and asserts the seeded data
+   is served. Adding `mongodb-memory-server` would bring it into `npm test`.
+3. ~~No CI pipeline~~ **Done.** `.github/workflows/ci.yml` runs the suite and a
+   boot check on every push and pull request, plus a Docker job covering the
+   containerised path.
 4. **Evolus endpoints are unverified.** All five paths in `ENDPOINTS` carry a
    `TODO: verify against Evolus API reference`. Mock mode is the only exercised
    path.
@@ -100,11 +103,11 @@ Deleted as dead code. All are recoverable from git history.
 1. Build the frontend against `CONTRACT.md`.
 2. Generate a test corpus and run `npm run eval` to replace the placeholder
    metrics in `docs/submission.md`.
-3. Add `mongodb-memory-server` and a GitHub Actions workflow running
-   `npm test`.
-4. Verify the Evolus endpoint paths against the live API reference and remove
+3. Verify the Evolus endpoint paths against the live API reference and remove
    the `TODO` markers.
+4. Run one document end-to-end against a live AMD Developer Cloud vLLM endpoint.
 5. Introduce a cents tolerance configurable via `MONEY_TOLERANCE_MINOR`.
+6. Add authentication in front of the public endpoints.
 
 ## File Ledger
 

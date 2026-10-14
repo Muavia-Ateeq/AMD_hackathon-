@@ -190,10 +190,11 @@ What *is* measured today, and asserted by the test suite:
   `eval_results.json` has not been generated because the ground-truth corpus
   does not exist yet; every accuracy figure is therefore reported as `null`
   rather than a placeholder.
-- **No CI pipeline.** The test suite runs locally and during review, not on
-  push.
-- **No end-to-end test against a live database.** Docker was unavailable in the
-  environment where this was verified.
+- **No CI pipeline** — **RESOLVED.** `.github/workflows/ci.yml` runs the test
+  suite, a boot check and a Docker job that starts MongoDB, runs the seed
+  script in a Linux container and asserts the seeded data is served.
+- ~~No end-to-end test against a live database~~ **RESOLVED** by the Docker CI
+  job, which exercises the containerised path end to end.
 
 ---
 
