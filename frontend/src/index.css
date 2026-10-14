@@ -1,0 +1,117 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply bg-amd-dark text-amd-text antialiased;
+  }
+  body {
+    @apply bg-amd-dark text-amd-text;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+  /* Custom scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #0A0A0A; }
+  ::-webkit-scrollbar-thumb { background: #2A2A2A; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #B00010; }
+
+  select, textarea, input {
+    @apply bg-amd-surface border-amd-border text-amd-text;
+  }
+  select option { background: #111111; color: #E5E5E5; }
+}
+
+@layer components {
+  /* ── Buttons ── */
+  .btn {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-amd-dark disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-amd-red text-white hover:bg-amd-redHover focus:ring-amd-red shadow-lg shadow-amd-red/20;
+  }
+  .btn-secondary {
+    @apply btn bg-amd-muted text-amd-text border border-amd-border hover:bg-amd-border focus:ring-amd-border;
+  }
+  .btn-danger {
+    @apply btn bg-red-900 text-red-200 hover:bg-red-800 border border-red-800 focus:ring-red-700;
+  }
+  .btn-success {
+    @apply btn bg-green-900 text-green-200 hover:bg-green-800 border border-green-800 focus:ring-green-700;
+  }
+
+  /* ── Cards ── */
+  .card {
+    @apply bg-amd-surface rounded-xl border border-amd-border p-6;
+  }
+
+  .stat-card {
+    position: relative;
+    overflow: hidden;
+    transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+    animation: stat-card-float 5s ease-in-out infinite;
+    will-change: transform;
+  }
+
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(120deg, transparent 0%, rgba(255,255,255,0.08) 40%, transparent 100%);
+    transform: translateX(-120%);
+    animation: stat-card-shimmer 3.5s ease-in-out infinite;
+  }
+
+  .stat-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 30px rgba(176, 0, 16, 0.10);
+  }
+
+  @keyframes stat-card-float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-4px); }
+  }
+
+  @keyframes stat-card-shimmer {
+    0% { transform: translateX(-120%); }
+    40%, 100% { transform: translateX(120%); }
+  }
+
+  /* ── Status badges ── */
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold;
+  }
+  .badge-approved {
+    @apply badge bg-green-950 text-green-400 border border-green-800;
+  }
+  .badge-review {
+    @apply badge bg-amber-950 text-amber-400 border border-amber-800;
+  }
+  .badge-rejected {
+    @apply badge bg-red-950 text-red-400 border border-red-900;
+  }
+  .badge-processing {
+    @apply badge bg-blue-950 text-blue-400 border border-blue-800 animate-pulse;
+  }
+  .badge-human {
+    @apply badge bg-purple-950 text-purple-400 border border-purple-800;
+  }
+
+  /* ── Issue severity cards ── */
+  .severity-high {
+    @apply bg-red-950 border border-red-900 text-red-200;
+  }
+  .severity-medium {
+    @apply bg-amber-950 border border-amber-900 text-amber-200;
+  }
+  .severity-low {
+    @apply bg-amd-muted border border-amd-border text-amd-sub;
+  }
+
+  /* ── Form inputs ── */
+  .input {
+    @apply w-full bg-amd-muted border border-amd-border rounded-lg px-3 py-2 text-sm text-amd-text
+           focus:outline-none focus:ring-2 focus:ring-amd-red focus:border-amd-red
+           placeholder:text-amd-sub;
+  }
+}
