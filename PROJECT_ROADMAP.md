@@ -6,44 +6,42 @@
 
 | Phase | Status |
 |-------|--------|
-| Repository Skeleton & AI_CONTEXT | 🔴 Active |
-| Document Extraction Service | ⏳ Pending |
-| Evolus Workflow Integration | ⏳ Pending |
-| Supplier Reply Generation | ⏳ Pending |
-| Deployment & Demo Preparation | ⏳ Pending |
+| Repository Skeleton & AI_CONTEXT | ✅ Complete |
+| Document Extraction Service | ✅ Complete (mock mode exercised) |
+| Evolus Workflow Integration | ✅ Adapter complete; live endpoints unverified |
+| Supplier Reply Generation | ✅ Complete |
+| Frontend (Moyeon) | 🔴 Not started — see `CONTRACT.md` |
+| Evaluation & Metrics | 🔴 Blocked on the ground-truth corpus |
+| Deployment & Demo Preparation | 🟡 In progress |
 
 ## Current Active Phase
 
-- Finalize repository structure (done).
-- Create governance files (AI_CONTEXT, PROJECT_ROADMAP, SYSTEM_LEDGER).
-- Prepare mock mode for Evolus integration.
-- Set up Docker and docker‑compose files.
-
-## Future Phases
-
-- **Phase 2:** Implement document extraction service (PDF parsing, OCR, data extraction).
-- **Phase 3:** Build rule‑engine for numeric validation and issue detection.
-- **Phase 4:** Integrate Evolus workflow and sub‑agents.
-- **Phase 5:** Implement PII redaction and supplier reply drafting.
-- **Phase 6:** End‑to‑end testing, performance benchmarking, and demo polishing.
+- Frontend build against `CONTRACT.md`.
+- Build the evaluation corpus (`data/documents/` + `data/ground_truth.json`) and
+  run `npm run eval` to replace the placeholder figures in `docs/submission.md`.
+- Verify the five Evolus endpoint paths against the live API reference and clear
+  the `TODO` markers in `src/services/evolusClient.js`.
+- Run one document end-to-end against a live AMD Developer Cloud vLLM endpoint.
 
 ## Milestones
 
 1. Repository skeleton & governance docs ✅
 2. Document extraction prototype (mock) ✅
 3. Rule engine core logic ✅
-4. Evolus workflow connection ✅
-5. Full end‑to‑end demo ready before 17 Oct 2026.
+4. Evolus workflow connection ✅ (adapter; endpoints unverified)
+5. Backend stabilisation: boot, correctness, security, contract ✅
+6. **Full end-to-end demo ready before 17 Oct 2026** 🔴 *at risk — frontend not started*
 
 ## Key Success Metrics
 
-- **Accuracy:** >95% field extraction confidence.
-- **Performance:** <2 s latency per document (GPU‑accelerated).
-- **Business Value:** Reduce manual invoice review time by ≥80%.
-- **Originality:** Custom rule engine + Evolus sub‑agent orchestration.
+- **Accuracy:** >95% field extraction confidence. *Not yet measured.*
+- **Performance:** <2 s latency per document (GPU‑accelerated). *Mock mode runs ~2 s end to end; the AMD path is unmeasured.*
+- **Business Value:** Reduce manual invoice review time by ≥80%. *Not yet measured.*
+- **Originality:** Custom rule engine + Evolus workflow orchestration. ✅
 
 ## Competitive Advantages
 
-- Combines deterministic numeric validation with LLM‑driven explanations.
+- The rules engine owns every numeric and policy decision, and its verdict is persisted **before** the LLM is called, so the model cannot influence an outcome even by failing.
+- Evolus orchestrates extraction and redaction; the open model on AMD writes only human-readable prose.
 - Open‑source, MIT‑licensed, easy to self‑host on AMD GPU.
-- Modular Evolus building blocks enable rapid feature expansion.
+- Deterministic behaviour: seeded reference data and pinned mock services make the seven demo scenarios reproducible and regression‑tested.

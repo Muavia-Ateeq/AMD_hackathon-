@@ -20,43 +20,79 @@ Purchasing staff and accountants in SMBs that receive dozens of PDFs each week a
 
 **How it works (10 steps)**
 1. User uploads a PDF via the REST endpoint `POST /api/documents`.
-2. `multer` stores the file temporarily and forwards it to Evolus **Document Extractor**.
-3. Evolus returns structured JSON (`src/clients/evolusClient.js`).
-4. `pipelineService` runs numeric validation (totals, taxes, quantities) using pure JavaScript logic.
+2. `multer` validates and buffers the file (`src/middleware/upload.js`), which
+   forwards it to the Evolus **Document Extractor**.
+3. Evolus returns structured JSON, normalized by `normalizeEvolusResult` in
+   `src/routes/webhooks.routes.js`.
+4. `pipelineService` runs numeric validation (totals, taxes, quantities) using
+   pure JavaScript logic (`src/rules/`).
 5. Issues are collected as `issues` objects (e.g., `TOTAL_MISMATCH`).
-6. If confidence for every field ≥ `CONFIDENCE_MIN` and no high‑severity issues, status becomes `auto_approved`.
-7. Otherwise the status is `needs_review` or `rejected` according to the decision rules in `src/services/rulesEngine.js`.
-8. In non‑mock mode the LLM client (`src/clients/llmClient.js`) receives the issue list and generates a **JSON** with `explanation` and a draft `reply` in the supplier’s language.
-9. `PII redaction` (Evolus **AI Tool**) creates a redacted PDF stored at `redactedFileUrl`.
-10. The final document record is saved in MongoDB (`src/models/Document.js`) and can be fetched via `GET /api/documents/:id`.
+6. The deterministic status is persisted first. If confidence for every field is
+   ≥ `CONFIDENCE_MIN` and there are no high-severity issues, the status becomes
+   `auto_approved`; otherwise `needs_review` or `rejected`, per
+   `src/rules/decision.js`.
+7. **Only then** is the LLM called, purely to write prose
+   (`src/clients/llmClient.js`). Its output is layered on top of the
+   rules-engine result and can never change a status.
+8. `PII Redaction` (Evolus **AI Tool**) creates a redacted PDF stored at
+   `redactedFileUrl`.
+9. The final record is saved in MongoDB (`src/models/Document.js`) and fetched
+   via `GET /api/documents/:id`.
+10. The deterministic justification is retained in `ruleExplanation`, which
+    model output can never overwrite.
 
 **How AMD is used**
-- The LLM runs on AMD Developer Cloud via a **vLLM** endpoint (`VLLM_ENDPOINT`).
-- The model (`VLLM_MODEL`, default `llama2-70b`) executes on ROCm‑enabled GPUs.
-- The backend calls the OpenAI‑style HTTP API, passing the prompt built in `llmClient.js`.
-- All inference latency is recorded in `modelMs` and stored in the document’s `timing` field.
+- The LLM runs on AMD Developer Cloud via a **vLLM** endpoint (`VLLM_BASE_URL`,
+  default `http://localhost:8000/v1`; the client appends `/chat/completions`).
+- The model (`VLLM_MODEL`, default `meta-llama/Llama-2-70b-chat-hf`) executes on
+  ROCm-enabled GPUs.
+- The backend calls the OpenAI-compatible HTTP API, passing the prompt built in
+  `src/clients/llmClient.js`.
+- Inference latency is measured per call and stored in the document's `timing.modelMs`.
+  Cost is derived from `usage.total_tokens` when `VLLM_USD_PER_1K_TOKENS` is set,
+  and reported as `null` rather than estimated when it is not.
 
 **How Evolus is used**
 - **Document Extractor** – parses PDFs into structured fields.
-- **AI Tool (PII redaction)** – strips personal data before storage.
-- **Knowledge Library** – holds reference PO data that the rules engine validates against.
-- **Sub‑agent** – handles asynchronous email‑draft generation.
-- **Workflow** – orchestrates the sequence of steps above via Evolus’ REST API (`src/services/evolusClient.js`).
+- **AI Tool (PII redaction)** – masks personal data before the artefact is shared.
+- **Workflow** – orchestrates the sequence of steps above via the Evolus REST API
+  (`src/services/evolusClient.js`).
+- Two building blocks are wired and exercised. **Knowledge Library** and
+  **Sub-agent** are not currently integrated: PO reference data comes from the
+  `PurchaseOrder` MongoDB collection, and the LLM is called directly over
+  vLLM rather than through an Evolus agent.
 
-**Safety & human hand‑off**
-If any issue is marked `high` severity, or if confidence falls below the threshold, the document status is `needs_review`/`rejected` and a human reviewer is notified (email webhook, see `src/controllers/webhookController.js`). No automatic financial decisions are made by the LLM.
+**Safety & human hand-off**
+If any issue is marked `high` severity, or the invoice is a duplicate, or the
+bank details changed, the document is `rejected`. Medium-severity issues, low
+field confidence, an unknown supplier, or a total at or above
+`AMOUNT_RISK_LIMIT` route it to `needs_review`. A human records their decision
+through `POST /api/documents/:id/decision`, which is appended to the document's
+`auditLog`. No automatic financial decision is made by the LLM.
 
 **Results**
 - Processed **[MISSING: total number of test documents – Muawia]** test PDFs.
-- Overall field‑accuracy: **[MISSING: fieldAccuracy – Muawia]**%.
-- Error‑catch‑rate (high‑severity issues detected): **[MISSING: errorCatchRate – Muawia]**%.
-- False‑alarm‑rate (low‑severity issues incorrectly flagged): **[MISSING: falseAlarmRate – Muawia]**%.
-- Average total processing time: **[MISSING: avgTotalMs – Muawia]** ms (incl. model latency).
+- Overall field-accuracy: **[MISSING: fieldAccuracy – Muawia]**%.
+- Error-catch-rate (high-severity issues detected): **[MISSING: errorCatchRate – Muawia]**%.
+- False-alarm-rate (low-severity issues incorrectly flagged): **[MISSING: falseAlarmRate – Muawia]**%.
+- Average total processing time: **[MISSING: avgTotalMs – Muawia]** ms (incl. model latency).
+
+These are generated by `npm run eval`, which compares pipeline output against
+`data/ground_truth.json`. That corpus does not exist yet. Until it does,
+`GET /api/metrics` returns `null` for every accuracy figure rather than a
+placeholder, and reports `evaluationStatus: "not_run"`.
+
+What *is* measured today, and asserted by the test suite:
+- All seven demo scenarios reach their documented status
+  (`backend/tests/scenarios.test.js`).
+- Threshold boundaries are exact: a field at `CONFIDENCE_MIN` passes and one
+  cent below it does not; a total at `AMOUNT_RISK_LIMIT` is held for review.
+- 79 automated tests pass across 5 suites.
 
 **Business value**
 - Reduces manual invoice review time by an estimated **[MISSING: time saved per invoice – Ammar]** minutes.
-- Prevents over‑payments above the `AMOUNT_RISK_LIMIT` ($5 k by default).
-- The paying party is the SMB that subscribes to the SaaS backend (per‑document pricing model).
+- Prevents over-payments above the `AMOUNT_RISK_LIMIT` ($5 k by default).
+- The paying party is the SMB that subscribes to the SaaS backend (per-document pricing model).
 
 **What comes next**
 - Add support for additional languages (currently tested for English, Italian, German).
@@ -68,27 +104,27 @@ If any issue is marked `high` severity, or if confidence falls below the thresho
 ## Evidence table for judging criteria
 | Criterion | Evidence in repo |
 |-----------|-------------------|
-| Application of Technology | `backend/Dockerfile` (multi‑stage Node 20 image, non‑root user) – **PASS**; `docker‑compose.yml` (AMD vLLM endpoint, Evolus env vars) – **PASS**; `src/clients/llmClient.js` (calls AMD vLLM) – **PASS** |
-| Business Value | README short description, `SECURITY_CHECKLIST.md` (shows production‑ready setup) – **PASS** |
-| Originality | Combination of Evolus workflow blocks with AMD‑hosted LLM for invoice validation – code in `src/services/pipelineService.js`, `src/services/rulesEngine.js` – **PASS** |
-| Presentation | Full `README.md`, Mermaid diagram in `README.md` (not yet present but planned) – **FIX** (add diagram) |
+| Application of Technology | `backend/Dockerfile` (multi-stage Node 20 image, non-root user, healthcheck) – **PASS**; `docker-compose.yml` (MongoDB with healthcheck gating, AMD vLLM + Evolus env vars) – **PASS**; `backend/src/clients/llmClient.js` (calls AMD vLLM with timeout and retry) – **PASS** |
+| Business Value | `README.md`, `docs/submission.md`; deterministic rule engine preventing silent over-payment – **PASS**. A claimed `SECURITY_CHECKLIST.md` was referenced here previously but does not exist and has been removed. |
+| Originality | Evolus workflow blocks combined with an AMD-hosted LLM, where a deterministic rules engine owns every numeric decision and the LLM is confined to prose – `backend/src/services/pipelineService.js`, `backend/src/rules/` – **PASS** |
+| Presentation | `CONTRACT.md`, `docs/api.md`, `docs/architecture.md` (with Mermaid sequence diagram) – **PASS**. The diagram lives in `docs/architecture.md`, not in `README.md`. |
 
 ---
 
 ## Requirements checklist (Evolus track)
 | Requirement | Status | Proof |
 |-------------|--------|-------|
-| Own vLLM endpoint on AMD | **PASS** | `backend/.env.example` shows `VLLM_ENDPOINT` placeholder; `docker‑compose.yml` sets `EVOLUS_ENDPOINT` and `EVOLUS_MODE` |
-| At least two Evolus building blocks | **PASS** | Document Extractor & AI Tool (see `src/services/evolusClient.js`) |
-| REST API exposing endpoints | **PASS** | `src/routes/documents.routes.js`, `src/routes/export.routes.js` |
-| Containerised deployment | **PASS** | `backend/Dockerfile`, `docker‑compose.yml` |
-| Public GitHub repo (MIT) | **PASS** | Repo root (assumed public) – license file present |
-| README with setup instructions | **PASS** | `README.md` (basic) |
-| No secrets in repo | **PASS** | `.gitignore` excludes `.env`; no API keys in source |
-| Use of AMD GPU/ROCm | **PASS** | Environment vars `VLLM_ENDPOINT`, `VLLM_MODEL` in Docker compose |
-| Use of Evolus REST API | **PASS** | `src/services/evolusClient.js` |
-| Minimum two Evolus blocks | **PASS** | Document Extractor, AI Tool, Knowledge Library (used in rulesEngine) |
-| Container health‑check | **PASS** | `backend/Dockerfile` healthcheck on `/api/health` |
+| Own vLLM endpoint on AMD | **PASS** | `.env.example` declares `VLLM_BASE_URL`, `VLLM_MODEL`, `VLLM_API_KEY`; `docker-compose.yml` passes all three through. Note the variable is `VLLM_BASE_URL`, not `VLLUS_ENDPOINT`. |
+| At least two Evolus building blocks | **PASS** | Document Extractor and PII Redaction AI Tool, both in `backend/src/services/evolusClient.js` |
+| REST API exposing endpoints | **PASS** | `backend/src/routes/documents.routes.js`, `backend/src/routes/export.routes.js`, `backend/src/routes/orders.routes.js`, `backend/src/routes/metrics.routes.js`, `backend/src/routes/health.routes.js`, `backend/src/routes/webhooks.routes.js`. Full reference in `CONTRACT.md`. |
+| Containerised deployment | **PASS** | `backend/Dockerfile`, `docker-compose.yml` |
+| Public GitHub repo (MIT) | **PASS** | `github.com/ammarzia124/Supplier-Document-AMD-III-Hackathon`, `LICENSE` present |
+| README with setup instructions | **PARTIAL** | `README.md` is a stub. `CONTRACT.md` documents the API and `SYSTEM_LEDGER.md` the state of the system, but there is no single setup walkthrough yet. |
+| No secrets in repo | **PASS** | `.gitignore` excludes `.env`; only `.env.example` placeholders are committed. Evolus credentials are scrubbed from all error messages. |
+| Use of AMD GPU/ROCm | **PARTIAL** | The client is configured and correct for vLLM on ROCm, and is exercised against a mock. It has **not** been run against a live AMD Developer Cloud endpoint in this environment. |
+| Use of Evolus REST API | **PARTIAL** | Adapter is complete for all calls, but all five endpoint paths are marked `TODO: verify against Evolus API reference` and only mock mode has been exercised. |
+| Minimum two Evolus blocks | **PARTIAL** | Two blocks wired. Knowledge Library is **not** used: PO reference data comes from the `PurchaseOrder` MongoDB collection. |
+| Container health-check | **PASS** | `backend/Dockerfile` probes `/api/health`. Liveness only — it does not verify MongoDB or Evolus. |
 
 ---
 
@@ -98,46 +134,68 @@ If any issue is marked `high` severity, or if confidence falls below the thresho
 | 0:00‑0:10 | Repo root, `docker‑compose.yml` opened in VS Code | “Here is the Docker‑Compose file that launches MongoDB and the backend, passing the AMD vLLM endpoint.” |
 | 0:10‑0:30 | Terminal: `docker compose up -d` | “We start the services; the backend health‑check becomes green in a few seconds.” |
 | 0:30‑1:00 | Postman (or curl) request `POST /api/documents` with a sample PDF | “Upload a supplier invoice; the backend forwards it to Evolus, runs numeric checks, and stores the result.” |
-| 1:00‑1:30 | `GET /api/documents/:id` response JSON shown | “You can see the extracted fields, any issues, and the LLM‑generated explanation and reply.” |
+| 1:00‑1:30 | `GET /api/documents/:id` response JSON shown | “You can see the extracted fields, any issues, and the explanation and reply.” |
 | 1:30‑2:00 | Browser view of the exported results `GET /api/export/results` | “The batch results endpoint delivers a JSON array for downstream evaluation.” |
-| 2:00‑2:30 | Highlight of `src/clients/llmClient.js` prompt construction | “The prompt is built entirely on the backend; the LLM never performs calculations—only language generation.” |
-| 2:30‑3:00 | Summary slide (markdown) showing key metrics (placeholders) | “In our benchmark we achieved X% field accuracy and Y ms average latency. All of this is documented in the repo.” |
-**Backup plan** – If the live backend fails, switch to the pre‑recorded screen capture of the same steps and explain that the same code would run in a real environment.
+| 2:00‑2:30 | Highlight of `backend/src/clients/llmClient.js` prompt construction | “The prompt is built entirely on the backend; the LLM never performs calculations—only language generation.” |
+| 2:30‑3:00 | Summary slide (markdown) showing key metrics | “In our benchmark we achieved X% field accuracy and Y ms average latency. All of this is documented in the repo.” |
+**Backup plan** – If the live backend fails, switch to the pre‑recorded screen capture of the same steps and explain that the same code would run in a real environment. The rules engine is pure and has no external dependency, so `npm test` also serves as a live demonstration of the validation logic.
 
 ---
 
 ## Typical judge questions & answers
 1. **Why not let the AI do the math?**
-   The LLM is a language model; it can hallucinate numbers. All numeric validation (totals, tax, quantities) is performed by deterministic JavaScript code (`pipelineService.js`).
+   The LLM is a language model; it can hallucinate numbers. All numeric validation (totals, tax, quantities) is performed by deterministic JavaScript code in `src/rules/`. Crucially the rules engine runs, and its status is written to the database, **before** the LLM is called — so a model failure cannot even change an outcome.
 2. **What if the model generates a wrong reply?**
-   Replies are only drafted. They are sent to the user for review; high‑severity issues force a manual hand‑off.
+   Replies are only drafted and are sent to the user for review. The machine-derived justification is kept in `ruleExplanation`, which model output can never overwrite, so an audit trail survives whatever the model says.
 3. **How much does a single document cost?**
-   Cost is driven by the vLLM token usage (`usage.totalTokens` stored per document). In mock mode it’s zero; real costing depends on AMD cloud pricing (not hard‑coded).
+   Cost is derived from the vLLM token usage (`usage.total_tokens`), priced via `VLLM_USD_PER_1K_TOKENS`. In mock mode it is zero. If that price is unset the API reports `costEstimate: null` rather than an invented figure.
 4. **What runs on AMD and what runs on Evolus?**
-   - AMD: the LLM inference (`VLLM_ENDPOINT`).
-   - Evolus: PDF extraction, PII redaction, knowledge library look‑ups, workflow orchestration.
+   - AMD: the LLM inference (`VLLM_BASE_URL`, `/chat/completions` appended automatically).
+   - Evolus: PDF extraction, PII redaction, workflow orchestration. Purchase-order reference data lives in MongoDB, not in an Evolus Knowledge Library.
 5. **How is personal data handled?**
-   The PII redaction block from Evolus strips any personal identifiers before the file is stored; redacted files are served via a signed URL.
+   The Evolus PII redaction tool produces a redacted artefact served via `redactedFileUrl`. Separately, the API never returns a full bank account: `GET /api/documents/:id` masks it to `****NNNN` and strips the raw upstream payload. Note the rules engine still needs the unmasked value internally to perform the bank-change check.
 6. **How do you ensure reproducible results?**
-   All configuration is in environment variables; the Docker image contains only production dependencies; the seed script (`npm run seed`) creates deterministic test data.
+   All configuration is in environment variables; the Docker image ships production dependencies only; `npm run seed` loads deterministic data rather than random fixtures; and the test suite pins Evolus and vLLM to mock mode so results do not depend on a developer's `.env`.
 7. **What is the scalability limit?**
-   The backend is stateless; horizontal scaling is achieved by running multiple container instances behind a load balancer. Rate‑limit middleware caps at 100 req/min per IP.
-8. **Can the system handle non‑PDF formats?**
-   Currently only PDF uploads are accepted (`multer` file filter). Extending to images or DOCX would require additional extractors.
+   The backend is stateless, so horizontal scaling is multiple instances behind a load balancer. The rate limiter is an in-memory store at 100 req/min per IP, so it is per-instance and resets on restart — a shared store such as Redis would be needed for a real multi-replica deployment.
+8. **Can the system handle non-PDF formats?**
+   Currently only PDF uploads are accepted. Extending to images or DOCX would require additional extractors.
 9. **How do you measure confidence?**
-   Evolus returns a confidence score per field (0‑1). The rules engine checks that each score ≥ `CONFIDENCE_MIN` (default 0.90).
+   Evolus returns a confidence score per field (0–1). The rules engine flags any field below `CONFIDENCE_MIN` (default 0.90), which forces human review. A field exactly at the threshold passes; this boundary is asserted in `tests/scenarios.test.js`.
 10. **What languages are supported?**
-    The LLM prompt includes the supplier’s language code; in tests we exercised English, Italian, and German. Adding more languages only requires the LLM model to support them.
+    The LLM prompt includes the supplier's language code; in tests we exercised English, Italian and German. Adding more languages only requires the model to support them.
+11. **Is the API secured?**
+    Only the Evolus webhook is authenticated. The other eight endpoints have no authentication and must not be exposed publicly without a gateway in front. This is a known gap, documented in `SYSTEM_LEDGER.md`.
 
 ---
 
 ## Known limitations
-- **Language coverage** – only English, Italian, German have been validated; other languages may produce lower confidence.
-- **Scan quality** – OCR accuracy drops for low‑resolution or heavily compressed PDFs; the extractor may return null fields.
-- **Test set size** – evaluation currently runs on a small synthetic benchmark (≈ [ MISSING: number of documents – Muawia ]). Larger real‑world datasets are needed for robust statistics.
-- **Metric placeholders** – `eval_results.json` has not been generated yet; numbers above are placeholders awaiting the benchmark run.
-- **Presentation diagram** – a Mermaid architecture diagram is mentioned but not yet added to the README.
+- **No authentication on the public API.** All nine endpoints are open; only
+  the Evolus webhook is authenticated. Do not expose this beyond a demo without
+  putting an authenticating gateway in front.
+- **Evolus endpoints are unverified.** All five paths carry a
+  `TODO: verify against Evolus API reference`, and only mock mode has been run.
+- **AMD vLLM not exercised live.** The client is configured for a ROCm vLLM
+  endpoint and handles both chat and legacy completions shapes, but no live AMD
+  Developer Cloud call has been made from this environment.
+- **Zero-cent money tolerance.** A one-cent rounding difference between an
+  invoice and its PO is a high-severity `TOTAL_MISMATCH` and rejects it.
+- **No currency cross-check.** An invoice denominated in EUR is compared
+  against a USD purchase order with no conversion.
+- **Language coverage** – only English, Italian and German have been validated;
+  other languages may produce lower confidence.
+- **Scan quality** – OCR accuracy drops for low-resolution or heavily
+  compressed PDFs; the extractor may return null fields.
+- **Test set size** – evaluation runs on a small synthetic benchmark.
+  `eval_results.json` has not been generated because the ground-truth corpus
+  does not exist yet; every accuracy figure is therefore reported as `null`
+  rather than a placeholder.
+- **No CI pipeline.** The test suite runs locally and during review, not on
+  push.
+- **No end-to-end test against a live database.** Docker was unavailable in the
+  environment where this was verified.
 
 ---
 
-*All claims in the long description are traceable to source files, tests, or the (currently missing) evaluation metrics.*
+*Every claim in the long description is traceable to source files or tests. Where a
+figure has not been measured, it is stated as missing rather than estimated.*

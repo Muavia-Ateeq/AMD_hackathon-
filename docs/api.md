@@ -1,12 +1,18 @@
 # API Documentation (docs/api.md)
 
+> **This document is a summary. [`../CONTRACT.md`](../CONTRACT.md) is authoritative** and includes the full error-code table, the status state machine and the frontend integration guide.
+
 ## Base URL
 
 All endpoints are relative to the **BASE_URL** defined by the environment variable `API_BASE_URL` (default `http://localhost:3000`).
 
 ## CORS
 
-Allowed origins are taken from the env var `CORS_ALLOWED_ORIGINS` (comma‑separated). In mock server we allow `http://localhost:5173`.
+Allowed origins are taken from the env var `CORS_ALLOWED_ORIGINS` (comma‑separated). Default: `http://localhost:5173, http://localhost:3000, http://127.0.0.1:5173`. A rejected origin returns **403** `CORS_FORBIDDEN`.
+
+## Authentication
+
+**None.** All endpoints except the Evolus webhook are unauthenticated. Do not expose the service publicly without an authenticating gateway in front of it. See `SYSTEM_LEDGER.md`.
 
 ## Error format
 
@@ -19,7 +25,14 @@ Every error response follows the same JSON schema:
   }
 }
 ```
-Typical `code` values: `VALIDATION_ERROR`, `NOT_FOUND`, `INTERNAL_ERROR`.
+
+Common codes: `VALIDATION_ERROR`, `INVALID_FILE_TYPE`, `UNAUTHORIZED`, `NOT_FOUND`, `CORS_FORBIDDEN`, `CONFLICT`, `PAYLOAD_TOO_LARGE`, `SERVICE_UNAVAILABLE`, `TOO_MANY_REQUESTS`, `INTERNAL_ERROR`.
+
+Messages for 5xx responses are generic; internal detail is logged server-side only. Errors explicitly marked safe (`err.expose`) such as the database-unavailable 503 do return their message.
+
+## Rate limiting
+
+100 requests per minute per IP, applied to all `/api` routes. Requests with no `Origin` (curl, Postman, server-side calls) are allowed through CORS; rate limiting still applies.
 
 ## Endpoints
 
@@ -46,9 +59,11 @@ Typical `code` values: `VALIDATION_ERROR`, `NOT_FOUND`, `INTERNAL_ERROR`.
 **GET** `/api/documents`
 
 Query parameters:
-- `status` – filter by status (`processing`, `auto_approved`, `needs_review`, `rejected`). Optional.
+- `status` – filter by status (`processing`, `auto_approved`, `needs_review`, `rejected`, `approved_by_human`). An unknown value returns 400.
 - `limit` – number of items to return (default 20, max 100).
-- `cursor` – pagination cursor (opaque string returned by previous call). Optional.
+- `cursor` – opaque pagination cursor. Pass the previous response's `nextCursor` verbatim. A malformed cursor returns 400.
+
+Pagination is keyset-based on `(createdAt, id)`, sorted newest first.
 
 **Response**
 ```json
@@ -56,14 +71,13 @@ Query parameters:
   "documents": [
     {
       "id": "<id>",
-      "fileName": "invoice‑123.pdf",
-      "uploadedAt": "2026‑10‑14T08:30:00.000Z",
+      "fileName": "invoice-123.pdf",
+      "uploadedAt": "2026-10-14T08:30:00.000Z",
       "supplierName": "Acme Corp",
       "language": "en",
       "type": "invoice",
       "status": "auto_approved"
     }
-    // …
   ],
   "nextCursor": "<string or null>"
 }
@@ -130,25 +144,32 @@ Body (JSON):
 ### 6. Metrics
 **GET** `/api/metrics`
 
-**Response** – aggregate statistics used in the dashboard.
+**Response** – aggregate statistics used in the dashboard. `countsByStatus` and the timing averages are measured from the database. Accuracy and cost figures require an evaluation run (`npm run eval`) and are `null` until one exists.
+
 ```json
 {
-  "countsByStatus": {"processing":10,"auto_approved":25,"needs_review":5,"rejected":2},
+  "countsByStatus": {"processing":0,"auto_approved":12,"needs_review":3,"rejected":1,"approved_by_human":0},
   "averageTotalMs": 1345,
   "averageModelMs": 420,
-  "fieldAccuracy": 0.96,
-  "errorCatchRate": 0.02,
-  "falseAlarmRate": 0.01,
-  "minutesSavedPerDoc": 3.5,
-  "gpu": {"name":"AMD Radeon Instinct MI250","model":"Llama‑2‑70B","tokensPerSecond": 4500,"requestsPerMinute": 30},
-  "costPerDocument": 0.015
+  "totalDocuments": 16,
+  "fieldAccuracy": null,
+  "errorCatchRate": null,
+  "falseAlarmRate": null,
+  "minutesSavedPerDoc": null,
+  "gpu": {"name": null, "model": "meta-llama/Llama-2-70b-chat-hf", "tokensPerSecond": null, "requestsPerMinute": null},
+  "costPerDocument": null,
+  "evaluationStatus": "not_run"
 }
 ```
+
+`evaluationStatus` is one of `not_run`, `measured`, `database_unavailable` or `error`. Render "not measured yet" for null accuracy figures rather than `0`.
 ---
 ### 7. Evolus webhook (internal)
 **POST** `/api/webhooks/evolus`
 
-Called by Evolus when a workflow finishes. Payload is Evolus‑specific; the mock server just acknowledges.
+Called by Evolus when a workflow finishes.
+
+**Authentication** – requires the `x-webhook-secret` header to match `EVOLUS_WEBHOOK_SECRET`. The secret is read from the header only, never the query string. Returns **401** on a missing or wrong secret, and **503** when the server has no secret configured (fail closed).
 
 **Response** – `200 OK` with `{ "status": "received" }`.
 ---
@@ -157,11 +178,26 @@ Called by Evolus when a workflow finishes. Payload is Evolus‑specific; the moc
 
 **Response** – simple JSON indicating the service is alive.
 ```json
-{ "status": "ok", "timestamp": "2026‑10‑14T08:57:00.000Z" }
+{ "status": "ok", "timestamp": "2026-10-14T08:57:00.000Z" }
 ```
+
+This is a **liveness probe only**: it confirms the process is serving and does not check MongoDB, Evolus or vLLM.
+---
+### 9. Export batch results
+**GET** `/api/export/results`
+
+Returns `backend/metrics/batch_results.json` produced by `npm run batch`, with an additional `eval` key when `npm run eval` has been run. Returns **404** until a batch has been run — this is expected, not an error.
+
+---
+## Database availability
+
+`/api/health`, `/api/orders` and `/api/metrics` work without MongoDB
+(orders and metrics fall back to zeroed values). The document endpoints require
+it and return **503** `SERVICE_UNAVAILABLE` immediately rather than hanging.
+
 ---
 ## Polling advice for frontend
-When a document is uploaded the client receives `status: "processing"`. The UI should poll **GET** `/api/documents/:id` every **2 seconds** until `status` becomes any of `auto_approved`, `needs_review` or `rejected`.
+When a document is uploaded the client receives `status: "processing"`. The UI should poll **GET** `/api/documents/:id` every **2 seconds** until `status` becomes one of `auto_approved`, `needs_review`, `rejected` or `approved_by_human`.
 
 ---
 *Owned by Ammar*

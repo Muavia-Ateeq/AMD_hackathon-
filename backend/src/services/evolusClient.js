@@ -17,8 +17,6 @@ const ENDPOINTS = {
   // TODO: verify against Evolus API reference
   AI_TOOL_RUN: (toolName) => `/ai-tools/${toolName}/run`,
   // TODO: verify against Evolus API reference
-  AGENT_CHAT: '/chat/completions',
-  // TODO: verify against Evolus API reference
   HEALTH_CHECK: '/health'
 };
 
@@ -203,37 +201,6 @@ async function runAiTool(toolName, payload) {
 }
 
 /**
- * 4. chatWithAgent
- * Communicates with an Evolus agent using OpenAI-compatible payload.
- * @param {Array<{ role: string, content: string }>} messages
- * @param {object} options
- * @returns {Promise<object>}
- */
-async function chatWithAgent(messages, options = {}) {
-  if (EVOLUS_MODE === 'mock') {
-    logger.info('Evolus mock mode: chatWithAgent');
-    const fixturePath = path.resolve(__dirname, '../../fixtures/agent_chat.json');
-    return JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
-  }
-
-  return executeWithRetry(async () => {
-    const client = getHttpClient();
-    // TODO: verify against Evolus API reference
-    const url = ENDPOINTS.AGENT_CHAT;
-    const body = {
-      messages,
-      model: options.model || 'evolus-agent',
-      temperature: options.temperature ?? 0.1,
-      ...options
-    };
-    const response = await client.post(url, body, {
-      headers: { 'Content-Type': 'application/json' }
-    });
-    return response.data;
-  });
-}
-
-/**
  * Health check ping for check_evolus.js script.
  */
 async function checkHealth() {
@@ -254,8 +221,8 @@ module.exports = {
   executeWorkflow,
   getExecution,
   runAiTool,
-  chatWithAgent,
   checkHealth,
   ENDPOINTS,
-  sanitizeError
+  sanitizeError,
+  escapeRegExp
 };

@@ -5,6 +5,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { spawnSync } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const SKIP_DIRS = new Set(['node_modules', '.git', 'coverage']);
@@ -87,5 +88,19 @@ describe('JSON fixtures', () => {
           expect(allowed).toContain(doc.status);
         });
       });
+  });
+});
+
+describe('Documentation references', () => {
+  test('every file path cited in the docs exists', () => {
+    // Guards against documentation pointing at renamed or deleted files,
+    // which is how the submission previously came to claim eight passing
+    // requirements backed by files that did not exist.
+    const result = spawnSync(process.execPath, [path.join(ROOT, 'scripts/check_docs.js')], {
+      encoding: 'utf8'
+    });
+
+    expect(result.stdout + result.stderr).toContain('All referenced paths exist.');
+    expect(result.status).toBe(0);
   });
 });
