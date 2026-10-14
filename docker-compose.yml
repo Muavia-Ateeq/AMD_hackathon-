@@ -11,6 +11,12 @@ services:
       - mongo_data:/data/db
     environment:
       - MONGO_INITDB_DATABASE=supplier-docs
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   backend:
     build:
@@ -23,17 +29,33 @@ services:
     environment:
       - PORT=3000
       - MONGODB_URI=mongodb://mongodb:27017/supplier-docs
-      - EVOLUS_ENDPOINT=https://api.evolus.ai/v1
+      # PUBLIC_BASE_URL must be reachable BY EVOLUS for the callback to
+      # arrive. Behind a tunnel or on a public host, set it accordingly.
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-http://localhost:3000}
+      - EVOLUS_BASE_URL=${EVOLUS_BASE_URL:-https://api.evolus.ai/api/v1}
       - EVOLUS_API_KEY=${EVOLUS_API_KEY:-}
+      - EVOLUS_APPLICATION_ID=${EVOLUS_APPLICATION_ID:-}
+      - EVOLUS_WORKFLOW_ID=${EVOLUS_WORKFLOW_ID:-}
+      # Required. The webhook returns 503 without it.
+      - EVOLUS_WEBHOOK_SECRET=${EVOLUS_WEBHOOK_SECRET:-}
       - EVOLUS_MODE=${EVOLUS_MODE:-mock}
+      # vLLM_BASE_URL is read by the client, which appends /chat/completions.
+      - VLLM_BASE_URL=${VLLM_BASE_URL:-}
+      - VLLM_API_KEY=${VLLM_API_KEY:-}
+      - VLLM_MODEL=${VLLM_MODEL:-meta-llama/Llama-2-70b-chat-hf}
+      - VLLM_TIMEOUT_MS=${VLLM_TIMEOUT_MS:-30000}
+      - VLLM_USD_PER_1K_TOKENS=${VLLM_USD_PER_1K_TOKENS:-0}
       - CONFIDENCE_MIN=${CONFIDENCE_MIN:-0.90}
       - AMOUNT_RISK_LIMIT=${AMOUNT_RISK_LIMIT:-5000}
-      - CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:3000}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
     depends_on:
-      - mongodb
+      mongodb:
+        condition: service_healthy
 
 volumes:
   mongo_data:
+
 # frontend (commented out – enable when the UI is ready)
 # frontend:
 #   build:

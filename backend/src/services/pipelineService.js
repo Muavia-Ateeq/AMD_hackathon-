@@ -4,16 +4,41 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const crypto = require('crypto');
 const Document = require('../models/Document');
 const PurchaseOrder = require('../models/PurchaseOrder');
 const Supplier = require('../models/Supplier');
 const { runAllRules } = require('../rules');
 const { executeWorkflow, getExecution, runAiTool } = require('./evolusClient');
-const pino = require('pino');
-const logger = pino();
+const logger = require('../utils/logger');
 const { generate } = require('../clients/llmClient');
 
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || 'http://localhost:3000';
+
+// 90 attempts x 2s = 180s of real elapsed time.
+const POLL_INTERVAL_MS = 2000;
+const POLL_MAX_ATTEMPTS = 90;
+
+/**
+ * Reads a numeric env threshold, falling back when unset or unparseable.
+ * A malformed value must never silently disable a control, so NaN is rejected.
+ */
+function readThreshold(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === null || String(raw).trim() === '') return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+/**
+ * Builds a collision-proof temp path from a random token rather than from the
+ * client-supplied filename, so a name containing separators or ".." cannot
+ * escape the OS temp directory.
+ */
+function makeTempFilePath(documentId, fileBuffer) {
+  const token = crypto.randomBytes(8).toString('hex');
+  return path.join(os.tmpdir(), `upload-${documentId}-${token}.pdf`);
+}
 
 /**
  * Starts processing for a newly uploaded document.
@@ -26,10 +51,9 @@ async function start(document, fileBuffer, fileName, options = {}) {
   const startTime = Date.now();
   const documentId = document.id;
 
-  // Write temporary file for multipart streaming if not on disk
   let tempFilePath = null;
   try {
-    tempFilePath = path.join(os.tmpdir(), `upload-${documentId}-${fileName}`);
+    tempFilePath = makeTempFilePath(documentId, fileBuffer);
     fs.writeFileSync(tempFilePath, fileBuffer);
 
     const callbackUrl = `${PUBLIC_BASE_URL}/api/webhooks/evolus?docId=${encodeURIComponent(documentId)}`;
@@ -49,7 +73,7 @@ async function start(document, fileBuffer, fileName, options = {}) {
     );
 
     // Fallback: poll execution in background in case webhook is blocked or in local dev
-    pollExecutionFallback(documentId, executionId, startTime, fileBuffer, fileName, options).catch(err => {
+    pollExecutionFallback(documentId, executionId, startTime, options).catch(err => {
       logger.error({ documentId, err: err.message }, 'Polling fallback encountered an error');
     });
 
@@ -62,6 +86,8 @@ async function start(document, fileBuffer, fileName, options = {}) {
       { id: documentId },
       {
         status: 'needs_review',
+        ruleExplanation: 'The Evolus workflow could not be started.',
+        explanation: `Processing error: ${error.message}`,
         issues: [
           {
             type: 'LOW_CONFIDENCE',
@@ -70,7 +96,6 @@ async function start(document, fileBuffer, fileName, options = {}) {
             message: `Workflow could not be started: ${error.message}`
           }
         ],
-        explanation: `Processing error: ${error.message}`,
         timing: { totalMs: Date.now() - startTime, modelMs: 0 }
       }
     );
@@ -84,16 +109,12 @@ async function start(document, fileBuffer, fileName, options = {}) {
 }
 
 /**
- * Polls getExecution every 2 seconds for up to 3 minutes (90 iterations)
+ * Polls getExecution every 2 seconds for up to 180 seconds (90 attempts).
  */
-async function pollExecutionFallback(documentId, executionId, startTime, fileBuffer, fileName, options = {}) {
-  const maxAttempts = 90; // 90 * 2000ms = 3 minutes
-  const pollInterval = 2000;
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    await new Promise(r => setTimeout(r, pollInterval));
-
-    // If webhook already finalized the document, exit polling
+async function pollExecutionFallback(documentId, executionId, startTime, options = {}) {
+  for (let attempt = 1; attempt <= POLL_MAX_ATTEMPTS; attempt++) {
+    // Check before sleeping so a fast workflow is not delayed by a full interval.
+    // If the webhook already finalized the document, there is nothing to do.
     const currentDoc = await Document.findOne({ id: documentId }).lean();
     if (!currentDoc || currentDoc.status !== 'processing') {
       logger.info({ documentId }, 'Document already finalized. Exiting poll loop.');
@@ -110,127 +131,231 @@ async function pollExecutionFallback(documentId, executionId, startTime, fileBuf
         const { normalizeEvolusResult } = require('../routes/webhooks.routes');
         const normalized = normalizeEvolusResult(execution);
 
-        await finalizeFromEvolus(documentId, normalized, fileBuffer, fileName);
+        await finalizeFromEvolus(documentId, normalized);
         return;
-      } else if (status === 'FAILED' || status === 'ERROR') {
-        throw new Error(execution.error?.message || 'Evolus execution failed');
+      }
+
+      if (status === 'FAILED' || status === 'ERROR') {
+        // A terminal failure is final. Mark the document and stop rather than
+        // retrying a dead workflow for the remaining ~3 minutes.
+        const reason = execution.error?.message || 'Evolus execution failed';
+        logger.error({ documentId, reason }, 'Evolus execution failed');
+        await markNeedsReview(
+          documentId,
+          startTime,
+          'execution',
+          `Workflow execution failed: ${reason}`,
+          'The Evolus workflow reported a terminal failure.'
+        );
+        return;
       }
     } catch (pollErr) {
-      if (attempt === maxAttempts) {
-        throw pollErr;
+      // Transient transport errors are tolerated, but log them: the previous
+      // code swallowed them silently for up to 89 iterations.
+      logger.warn({ documentId, attempt, err: pollErr.message }, 'Poll attempt failed, retrying');
+
+      if (attempt === POLL_MAX_ATTEMPTS) {
+        logger.error({ documentId, err: pollErr.message }, 'Polling gave up after max attempts');
       }
+    }
+
+    if (attempt < POLL_MAX_ATTEMPTS) {
+      await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
     }
   }
 
-  // Timeout reached after 3 minutes
+  // Timeout reached
+  logger.warn({ documentId }, 'Workflow polling timed out');
+  await markNeedsReview(
+    documentId,
+    startTime,
+    'execution',
+    `Workflow processing timed out after ${Math.round((POLL_MAX_ATTEMPTS * POLL_INTERVAL_MS) / 1000)} seconds`,
+    'Workflow timed out waiting for extraction result.'
+  );
+}
+
+/**
+ * Moves a still-processing document to needs_review with a single issue.
+ */
+async function markNeedsReview(documentId, startTime, field, message, ruleExplanation) {
   await Document.findOneAndUpdate(
     { id: documentId, status: 'processing' },
     {
       status: 'needs_review',
+      ruleExplanation,
+      explanation: ruleExplanation,
       issues: [
         {
           type: 'LOW_CONFIDENCE',
           severity: 'low',
-          field: 'execution',
-          message: 'Workflow processing timed out after 3 minutes'
+          field,
+          message
         }
       ],
-      explanation: 'Workflow timed out waiting for extraction result.',
       timing: { totalMs: Date.now() - startTime, modelMs: 0 }
     }
   );
 }
 
 /**
- * Finalizes document processing using normalized extraction results and rules engine.
- * @param {string} documentId
- * @param {object} normalized
- * @param {Buffer} [fileBuffer]
- * @param {string} [fileName]
+ * Looks a supplier up by exact name, case-insensitively.
+ *
+ * Uses a collation rather than a regex: supplierName originates from an
+ * untrusted PDF, and interpolating it into a RegExp both allowed pattern
+ * injection (a name like "(Global) Ltd" threw SyntaxError and stranded the
+ * document) and false positives ("A.C" matching "ABC").
  */
-async function finalizeFromEvolus(documentId, normalized, fileBuffer = null, fileName = null) {
-  const doc = await Document.findOne({ id: documentId });
-  if (!doc) return;
-
-  const extracted = normalized.extracted || {};
-  const confidence = normalized.confidence || {};
-  const supplierName = normalized.supplierName || doc.supplierName || 'Unknown';
-  const language = normalized.language || doc.language || 'en';
-
-  // 1. Context queries from Database
-  const [supplier, purchaseOrder, duplicateDoc] = await Promise.all([
-    Supplier.findOne({ name: new RegExp(`^${supplierName}$`, 'i') }).lean(),
-    extracted.poNumber ? PurchaseOrder.findOne({ poNumber: extracted.poNumber }).lean() : null,
-    extracted.invoiceNumber ? Document.findOne({
-      id: { $ne: documentId },
-      'extracted.invoiceNumber': extracted.invoiceNumber
-    }).lean() : null
-  ]);
-
-  // 2. Rules engine evaluation (CODE does all math and policy decisions)
-  const confidenceMin = parseFloat(process.env.CONFIDENCE_MIN || '0.90');
-  const amountRiskLimit = parseFloat(process.env.AMOUNT_RISK_LIMIT || '5000');
-
-  const ruleResult = runAllRules({
-    extracted,
-    confidence,
-    supplierName,
-    supplier,
-    purchaseOrder,
-    isDuplicate: Boolean(duplicateDoc),
-    confidenceMin,
-    amountRiskLimit
-  });
-
-  // 3. AI Tool: PII Redaction
-  let redactedFileUrl = null;
-  try {
-    const redactionRes = await runAiTool('pii-redaction', {
-      documentId,
-      supplierName,
-      bankAccount: extracted.bankAccount
-    });
-    redactedFileUrl = redactionRes.redactedFileUrl || null;
-  } catch (err) {
-    logger.warn({ err: err.message }, 'PII Redaction tool execution skipped');
-  }
-
-// 4. Generate explanation and supplier reply via LLM
-let supplierReplyDraft = null;
-let llmResult = { explanation: '', reply: '' };
-if (ruleResult.issues.length > 0) {
-  llmResult = await generate({
-    language,
-    supplierName,
-    issues: ruleResult.issues,
-    extracted
-  });
-  supplierReplyDraft = llmResult.reply;
-  // Overwrite explanation with LLM generated one
-  ruleResult.explanation = llmResult.explanation;
+function findSupplierByName(supplierName) {
+  return Supplier.findOne({ name: supplierName })
+    .collation({ locale: 'en', strength: 2 })
+    .lean();
 }
 
-  // 5. Update document record
-  doc.status = ruleResult.status;
-  doc.supplierName = supplierName;
-  doc.language = language;
-  doc.extracted = extracted;
-  doc.confidence = confidence;
-  doc.issues = ruleResult.issues;
-  doc.explanation = ruleResult.explanation;
-  doc.supplierReplyDraft = supplierReplyDraft;
-  doc.redactedFileUrl = redactedFileUrl;
-  doc.timing = {
-    totalMs: normalized.timing?.totalMs || 1200,
-    modelMs: normalized.timing?.modelMs || 400
-  };
-  doc.costEstimate = 0.012;
+/**
+ * Finalizes document processing using normalized extraction results and rules engine.
+ *
+ * Guarded by an atomic claim so the webhook and the polling fallback cannot
+ * both finalize the same document. Without it both paths read the document,
+ * call the LLM concurrently, and the later save silently overwrites the other.
+ *
+ * @param {string} documentId
+ * @param {object} normalized
+ * @returns {Promise<object|null>} the finalized document, or null if not claimed
+ */
+async function finalizeFromEvolus(documentId, normalized) {
+  const startTime = Date.now();
 
-  await doc.save();
-  logger.info({ documentId, status: doc.status }, 'Document pipeline finalized successfully');
+  // Atomic claim: only one caller can move out of processing.
+  const doc = await Document.findOneAndUpdate(
+    { id: documentId, status: 'processing', finalizing: { $ne: true } },
+    { $set: { finalizing: true } },
+    { new: true }
+  );
+
+  if (!doc) {
+    logger.info({ documentId }, 'Document not claimable for finalization (already done or in progress)');
+    return null;
+  }
+
+  try {
+    const extracted = normalized.extracted || {};
+    const confidence = normalized.confidence || {};
+    const supplierName = normalized.supplierName || doc.supplierName || 'Unknown';
+    const language = normalized.language || doc.language || 'en';
+
+    // 1. Context queries from Database
+    const [supplier, purchaseOrder, duplicateDoc] = await Promise.all([
+      findSupplierByName(supplierName),
+      extracted.poNumber ? PurchaseOrder.findOne({ poNumber: extracted.poNumber }).lean() : null,
+      extracted.invoiceNumber ? Document.findOne({
+        id: { $ne: documentId },
+        'extracted.invoiceNumber': extracted.invoiceNumber
+      }).lean() : null
+    ]);
+
+    // 2. Rules engine evaluation (CODE does all math and policy decisions)
+    const confidenceMin = readThreshold('CONFIDENCE_MIN', 0.90);
+    const amountRiskLimit = readThreshold('AMOUNT_RISK_LIMIT', 5000);
+
+    const ruleResult = runAllRules({
+      extracted,
+      confidence,
+      supplierName,
+      supplier,
+      purchaseOrder,
+      isDuplicate: Boolean(duplicateDoc),
+      confidenceMin,
+      amountRiskLimit
+    });
+
+    // 3. AI Tool: PII Redaction. Failure is recorded rather than silently
+    // swallowed, so a missing redacted artefact is visible downstream.
+    let redactedFileUrl = null;
+    let redactionError = null;
+    try {
+      const redactionRes = await runAiTool('pii-redaction', {
+        documentId,
+        supplierName,
+        bankAccount: extracted.bankAccount
+      });
+      redactedFileUrl = redactionRes.redactedFileUrl || null;
+    } catch (err) {
+      redactionError = err.message;
+      logger.warn({ documentId, err: err.message }, 'PII redaction tool execution failed');
+    }
+
+    // 4. Persist the deterministic outcome BEFORE calling the LLM.
+    //
+    // The LLM only writes natural language, but it is a remote dependency that
+    // can time out or return malformed JSON. Recording status first means a
+    // model failure can never leave a document stuck in "processing" forever,
+    // and the audit-grade rule explanation is preserved either way.
+    const deterministicExplanation = ruleResult.explanation;
+
+    doc.status = ruleResult.status;
+    doc.supplierName = supplierName;
+    doc.language = language;
+    doc.extracted = extracted;
+    doc.confidence = confidence;
+    doc.issues = ruleResult.issues;
+    doc.ruleExplanation = deterministicExplanation;
+    doc.explanation = deterministicExplanation;
+    doc.supplierReplyDraft = null;
+    doc.redactedFileUrl = redactedFileUrl;
+    doc.redactionError = redactionError;
+    doc.timing = {
+      totalMs: normalized.timing?.totalMs ?? (Date.now() - startTime),
+      modelMs: normalized.timing?.modelMs ?? 0
+    };
+    doc.costEstimate = null;
+
+    await doc.save();
+    logger.info({ documentId, status: doc.status }, 'Document finalized by rules engine');
+
+    // 5. LLM pass: explanation and supplier reply. Best-effort enrichment; the
+    //    document is already in its final, auditable state.
+    if (ruleResult.issues.length > 0) {
+      try {
+        const llmResult = await generate({
+          language,
+          supplierName,
+          issues: ruleResult.issues,
+          extracted
+        });
+
+        await Document.findOneAndUpdate(
+          { id: documentId },
+          {
+            supplierReplyDraft: llmResult.reply || null,
+            // Only adopt the model's prose when it actually produced something,
+            // so an empty completion cannot erase the rule explanation.
+            explanation: llmResult.explanation || deterministicExplanation,
+            'timing.modelMs': llmResult.modelMs ?? doc.timing.modelMs,
+            costEstimate: llmResult.costEstimate ?? null
+          }
+        );
+      } catch (llmErr) {
+        logger.error({ documentId, err: llmErr.message }, 'LLM enrichment failed; keeping rule explanation');
+      }
+    }
+
+    return doc;
+  } catch (err) {
+    // Release the claim so a later attempt (or the poller's timeout path) can
+    // still move the document out of processing.
+    logger.error({ documentId, err: err.message }, 'Finalization failed');
+    await Document.findOneAndUpdate(
+      { id: documentId },
+      { $set: { finalizing: false } }
+    ).catch(() => {});
+    throw err;
+  }
 }
 
 module.exports = {
   start,
-  finalizeFromEvolus
+  finalizeFromEvolus,
+  POLL_INTERVAL_MS,
+  POLL_MAX_ATTEMPTS
 };

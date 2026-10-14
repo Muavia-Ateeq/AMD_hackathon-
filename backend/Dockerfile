@@ -1,5 +1,5 @@
 # backend/Dockerfile
-# Multi‑stage build, Node 20 slim, non‑root user, health‑check, production only
+# Multi-stage build, Node 20 alpine, non-root user, health-check, production only
 
 # ---------- Builder stage ----------
 FROM node:20-alpine AS builder
@@ -16,14 +16,24 @@ COPY . ./
 FROM node:20-alpine AS runtime
 WORKDIR /app
 
-# Copy only production‑ready source (exclude dev deps)
+# curl is absent from the alpine base image. Without it the HEALTHCHECK below
+# fails with "command not found" and the container reports permanently
+# unhealthy regardless of application state.
+RUN apk add --no-cache curl
+
+# Install production dependencies only. npm 9 deprecates --only=production in
+# favour of --omit=dev.
 COPY --from=builder /app/package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev && npm cache clean --force
 
-# Copy application code (excluding node_modules from builder)
-COPY --from=builder /app .
+# Copy application code WITHOUT the builder's node_modules. The previous
+# `COPY --from=builder /app .` overwrote the pruned tree with the full
+# dev-inclusive one, shipping jest and faker into production.
+COPY --from=builder /app/src ./src
+COPY --from=builder /app/fixtures ./fixtures
+COPY --from=builder /app/seed ./seed
 
-# Create non‑root user (uid 1000) and switch to it
+# Create non-root user (uid 1000) and switch to it
 RUN addgroup -S nodegroup && adduser -S nodeuser -G nodegroup && chown -R nodeuser:nodegroup /app
 USER nodeuser
 
@@ -34,7 +44,8 @@ EXPOSE 3000
 ENV NODE_ENV=production
 ENV PORT=3000
 
-# Health‑check – use curl (installed in alpine) to probe /api/health
+# Health-check. /api/health is a liveness probe: it confirms the process is
+# serving, not that MongoDB or Evolus are reachable.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s \
   CMD curl -f http://localhost:${PORT}/api/health || exit 1
 

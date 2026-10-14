@@ -67,9 +67,22 @@ const DocumentSchema = new mongoose.Schema({
   extracted: { type: ExtractedDataSchema, default: null },
   confidence: { type: Map, of: Number, default: {} },
   issues: [DocumentIssueSchema],
+  // Deterministic, audit-grade explanation produced by the rules engine.
+  // Never overwritten by model output, so a rejection always retains its
+  // machine-derived justification.
+  ruleExplanation: { type: String, default: null },
+  // Human-readable explanation shown in the UI. May be LLM-enriched prose
+  // layered on top of ruleExplanation, which is never discarded.
   explanation: { type: String, default: null },
   supplierReplyDraft: { type: String, default: null },
   redactedFileUrl: { type: String, default: null },
+  // Set when the PII redaction tool failed, so a missing redacted artefact is
+  // visible instead of being silently indistinguishable from "not applicable".
+  redactionError: { type: String, default: null },
+  // Internal concurrency guard. The webhook and the polling fallback race to
+  // finalize the same document; this flag is claimed atomically so exactly one
+  // of them wins. Not part of the public API contract.
+  finalizing: { type: Boolean, default: false },
   timing: {
     totalMs: { type: Number, default: null },
     modelMs: { type: Number, default: null }
