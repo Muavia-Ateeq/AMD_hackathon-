@@ -14,8 +14,9 @@
 - **MongoDB + Mongoose** – Persistent storage.
 - **Zod** – Schema validation.
 - **Multer** – File uploads.
-- **Axios** – HTTP client for Evolus integration.
-- **Pino** – Structured logging.
+- **Axios** – HTTP client for Evolus and vLLM.
+- **Pino** – Structured logging (all logging goes through `src/utils/logger.js`).
+- **express-rate-limit** – Per‑IP rate limiting on `/api`.
 - **Jest** – Testing.
 - **dotenv** – Config management.
 - **Docker** – Containerization.
@@ -26,7 +27,10 @@
 ## Architecture
 - **Directory hierarchy** follows Clean Architecture / MVC separation (see repo tree).
 - **Layers**: `src/routes → src/controllers → src/services → src/models`.
+- **Exception**: the vLLM client lives in `src/clients/llmClient.js`, not `src/services/`, so it is not confused with the internal services.
 - **Boundaries**: Services encapsulate external calls (Evolus, vLLM). Controllers only orchestrate request/response.
+- **Rules engine** (`src/rules/`) is pure and dependency‑free: no I/O, no database, no network. It is the single authority for every numeric and policy decision.
+- **Reference documentation**: `CONTRACT.md` is the authoritative API contract. Where it disagrees with `docs/api.md`, `CONTRACT.md` wins.
 
 ## Design Tokens
 *(UI‑related; kept for completeness – frontend owns these)*
@@ -41,6 +45,9 @@
 - Introduce hard‑coded secrets or credentials.
 - Change the `Document` data contract without notifying Ammar & Moyeon.
 - Skip confidence thresholds.
+- Report a metric that has not been measured. Unmeasured values are `null`, never a placeholder number.
+- Let the LLM decide a status, an amount or a tolerance. It writes prose only.
+- Add a JSON file containing `//` comments. Every fixture is strict JSON, enforced by `tests/fixtures.test.js`.
 
 ### ALWAYS
 - Validate all inputs with Zod schemas.
@@ -48,6 +55,7 @@
 - Return errors in `{ error: { code, message } }` shape.
 - Keep numeric logic out of LLM prompts – compute in code.
 - Update `.env.example` for any new environment variable.
+- Run `npm test` before committing. 79 tests across 5 suites, no external services required.
 
 ## Model & Tool Strategy
 - **Primary model**: Open‑source model served via vLLM (AMD Cloud).

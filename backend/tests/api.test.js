@@ -59,14 +59,56 @@ describe('API Integration Tests', () => {
     expect(data.error.code).toBe('VALIDATION_ERROR');
   });
 
-  test('POST /api/webhooks/evolus acknowledges workflow hook', async () => {
+  test('POST /api/webhooks/evolus acknowledges workflow hook when authenticated', async () => {
     const res = await fetch(`${baseUrl}/api/webhooks/evolus`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-webhook-secret': process.env.EVOLUS_WEBHOOK_SECRET
+      },
       body: JSON.stringify({ workflowId: 'wf-123', status: 'completed' })
     });
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.status).toBe('received');
+  });
+
+  test('POST /api/webhooks/evolus rejects a missing secret', async () => {
+    const res = await fetch(`${baseUrl}/api/webhooks/evolus`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflowId: 'wf-123', status: 'completed' })
+    });
+    expect(res.status).toBe(401);
+    const data = await res.json();
+    expect(data.error.code).toBe('UNAUTHORIZED');
+  });
+
+  test('POST /api/webhooks/evolus rejects a wrong secret', async () => {
+    const res = await fetch(`${baseUrl}/api/webhooks/evolus`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-webhook-secret': 'not-the-secret'
+      },
+      body: JSON.stringify({ workflowId: 'wf-123', status: 'completed' })
+    });
+    expect(res.status).toBe(401);
+  });
+
+  test('unknown route returns a structured 404', async () => {
+    const res = await fetch(`${baseUrl}/api/definitely-not-a-route`);
+    expect(res.status).toBe(404);
+    const data = await res.json();
+    expect(data.error.code).toBe('NOT_FOUND');
+  });
+
+  test('POST /api/documents rejects a non-PDF upload', async () => {
+    const form = new FormData();
+    form.append('file', new Blob(['not a pdf'], { type: 'text/plain' }), 'notes.txt');
+    const res = await fetch(`${baseUrl}/api/documents`, { method: 'POST', body: form });
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toBeDefined();
   });
 });

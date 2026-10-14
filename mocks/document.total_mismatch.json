@@ -6,7 +6,7 @@
     "supplierName": "Omega Supplies",
     "language": "it",
     "type": "invoice",
-    "status": "needs_review",
+    "status": "rejected",
     "extracted": {
       "invoiceNumber": "INV-2002",
       "date": "2026-09-28",
@@ -18,7 +18,7 @@
       "subtotal": 100.0,
       "tax": 22.0,
       "total": 115.0,
-      "bankAccount": "555666777"
+      "bankAccount": "222333444"
     },
     "confidence": {
       "total": 0.92

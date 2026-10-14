@@ -24,7 +24,7 @@
     "issues": [
       {
         "type": "PRICE_MISMATCH",
-        "severity": "high",
+        "severity": "medium",
         "field": "unitPrice",
         "message": "Unit price (0.10) differs from PO unit price (0.12)"
       }

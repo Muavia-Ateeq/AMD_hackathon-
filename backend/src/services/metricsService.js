@@ -4,81 +4,125 @@
 const mongoose = require('mongoose');
 const Document = require('../models/Document');
 
-const DEFAULT_METRICS = {
-  countsByStatus: { processing: 0, auto_approved: 28, needs_review: 4, rejected: 2, approved_by_human: 0 },
-  averageTotalMs: 1380,
-  averageModelMs: 430,
-  fieldAccuracy: 0.95,
-  errorCatchRate: 0.018,
-  falseAlarmRate: 0.009,
-  minutesSavedPerDoc: 4.2,
-  gpu: {
-    name: process.env.GPU_NAME || 'AMD Radeon Instinct MI250',
-    model: process.env.MODEL_NAME || 'Llama-2-70B',
-    tokensPerSecond: 4700,
-    requestsPerMinute: 28
-  },
-  costPerDocument: 0.014
-};
+const ALL_STATUSES = ['processing', 'auto_approved', 'needs_review', 'rejected', 'approved_by_human'];
+
+/**
+ * Evaluation figures (fieldAccuracy, errorCatchRate, falseAlarmRate) can only
+ * be computed by comparing pipeline output against ground truth, which lives in
+ * data/ground_truth.json and is produced by scripts/compute_eval.js.
+ *
+ * These were previously hard-coded literals presented as measurements, and the
+ * no-database fallback reported countsByStatus of 28 auto-approved documents
+ * against an empty database. They are now null until genuinely measured.
+ */
+function loadEvalSummary() {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const evalPath = path.resolve(__dirname, '..', '..', 'metrics', 'eval_results.json');
+    if (!fs.existsSync(evalPath)) return null;
+    const parsed = JSON.parse(fs.readFileSync(evalPath, 'utf8'));
+    return typeof parsed === 'object' ? parsed : null;
+  } catch (err) {
+    return null;
+  }
+}
+
+function emptyMetrics() {
+  return {
+    countsByStatus: Object.fromEntries(ALL_STATUSES.map(s => [s, 0])),
+    averageTotalMs: null,
+    averageModelMs: null,
+    totalDocuments: 0,
+    fieldAccuracy: null,
+    errorCatchRate: null,
+    falseAlarmRate: null,
+    minutesSavedPerDoc: null,
+    gpu: {
+      name: process.env.GPU_NAME || null,
+      model: process.env.MODEL_NAME || process.env.VLLM_MODEL || null,
+      tokensPerSecond: null,
+      requestsPerMinute: null
+    },
+    costPerDocument: null,
+    // Tells the UI to render "not measured yet" rather than showing zeros.
+    evaluationStatus: 'not_run'
+  };
+}
 
 /**
  * Computes current aggregate metrics across all processed documents.
+ *
+ * countsByStatus and the timing averages are measured from the database.
+ * Accuracy and cost figures require an evaluation run and are merged in only
+ * when one exists.
  * @returns {Promise<object>}
  */
 async function getSystemMetrics() {
+  const metrics = emptyMetrics();
+
   if (mongoose.connection.readyState !== 1) {
-    return DEFAULT_METRICS;
+    metrics.evaluationStatus = 'database_unavailable';
+    return metrics;
   }
 
-  const counts = {
-    processing: 0,
-    auto_approved: 0,
-    needs_review: 0,
-    rejected: 0
-  };
-
   try {
-    const docs = await Document.find().maxTimeMS(2000).lean();
+    // Aggregate in the database rather than loading every document into
+    // memory, which previously grew without bound.
+    const [grouped, timing] = await Promise.all([
+      Document.aggregate([
+        { $group: { _id: '$status', count: { $sum: 1 } } }
+      ]),
+      Document.aggregate([
+        {
+          $match: { 'timing.totalMs': { $type: 'number' } }
+        },
+        {
+          $group: {
+            _id: null,
+            avgTotalMs: { $avg: '$timing.totalMs' },
+            avgModelMs: { $avg: '$timing.modelMs' },
+            count: { $sum: 1 }
+          }
+        }
+      ])
+    ]);
 
-    let totalTotalMs = 0;
-    let totalModelMs = 0;
-    let timingCount = 0;
-
-    docs.forEach(d => {
-      if (counts[d.status] !== undefined) {
-        counts[d.status]++;
-      }
-      if (d.timing && typeof d.timing.totalMs === 'number') {
-        totalTotalMs += d.timing.totalMs;
-        totalModelMs += (d.timing.modelMs || 0);
-        timingCount++;
+    grouped.forEach(g => {
+      if (ALL_STATUSES.includes(g._id)) {
+        // Previously the accumulator omitted approved_by_human, so manually
+        // approved documents were silently dropped from live metrics while
+        // still appearing in the fallback payload.
+        metrics.countsByStatus[g._id] = g.count;
+        metrics.totalDocuments += g.count;
       }
     });
 
-    const averageTotalMs = timingCount > 0 ? Math.round(totalTotalMs / timingCount) : 1380;
-    const averageModelMs = timingCount > 0 ? Math.round(totalModelMs / timingCount) : 430;
+    if (timing.length > 0) {
+      metrics.averageTotalMs = Math.round(timing[0].avgTotalMs);
+      metrics.averageModelMs = Math.round(timing[0].avgModelMs || 0);
+    }
 
-    return {
-      countsByStatus: counts,
-      averageTotalMs,
-      averageModelMs,
-      fieldAccuracy: 0.95,
-      errorCatchRate: 0.018,
-      falseAlarmRate: 0.009,
-      minutesSavedPerDoc: 4.2,
-      gpu: {
-        name: process.env.GPU_NAME || 'AMD Radeon Instinct MI250',
-        model: process.env.MODEL_NAME || 'Llama-2-70B',
-        tokensPerSecond: 4700,
-        requestsPerMinute: 28
-      },
-      costPerDocument: 0.014
-    };
+    const evalSummary = loadEvalSummary();
+    if (evalSummary) {
+      metrics.fieldAccuracy = evalSummary.fieldAccuracy ?? null;
+      metrics.errorCatchRate = evalSummary.errorCatchRate ?? null;
+      metrics.falseAlarmRate = evalSummary.falseAlarmRate ?? null;
+      metrics.evaluationStatus = 'measured';
+      if (typeof evalSummary.costPerDocument === 'number') {
+        metrics.costPerDocument = evalSummary.costPerDocument;
+      }
+    }
+
+    return metrics;
   } catch (err) {
-    return DEFAULT_METRICS;
+    metrics.evaluationStatus = 'error';
+    return metrics;
   }
 }
 
 module.exports = {
-  getSystemMetrics
+  getSystemMetrics,
+  emptyMetrics,
+  ALL_STATUSES
 };

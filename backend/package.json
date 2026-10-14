@@ -5,23 +5,31 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
     "seed": "node seed/seed.js",
-    "test": "jest"
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "check:evolus": "node scripts/check_evolus.js",
+    "check:vllm": "node scripts/check_vllm.js",
+    "batch": "node ../scripts/run_batch.js",
+    "eval": "node ../scripts/compute_eval.js"
   },
   "dependencies": {
     "axios": "^1.7.2",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "express-rate-limit": "^6.7.0",
     "form-data": "^4.0.0",
     "mongoose": "^8.5.4",
     "multer": "^1.4.5-lts.1",
     "pino": "^9.2.0",
-    "zod": "^3.23.8",
-    "faker": "^5.5.3",
-    "express-rate-limit": "^6.7.0"
+    "zod": "^3.23.8"
   },
   "devDependencies": {
+    "faker": "^5.5.3",
+    "jest": "^29.7.0",
     "supertest": "^6.3.4"
   }
 }

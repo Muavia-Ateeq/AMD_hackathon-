@@ -13,7 +13,11 @@ const corsMiddleware = cors({
     if (!origin || allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
       return callback(null, true);
     }
-    return callback(new Error('Blocked by CORS policy'));
+    // 403 rather than a bare Error, which errorHandler would map to 500.
+    const err = new Error(`Origin '${origin}' is not allowed by CORS policy`);
+    err.statusCode = 403;
+    err.code = 'CORS_FORBIDDEN';
+    return callback(err);
   },
   credentials: true
 });

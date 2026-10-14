@@ -2,7 +2,7 @@
 // Verification script for Evolus REST API credentials. Owned by Ammar
 
 require('dotenv').config();
-const { checkHealth, ENDPOINTS } = require('../src/services/evolusClient');
+const { checkHealth } = require('../src/services/evolusClient');
 
 async function checkEvolus() {
   console.log('====================================================');

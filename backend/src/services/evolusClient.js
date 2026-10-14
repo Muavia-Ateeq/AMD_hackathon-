@@ -17,8 +17,6 @@ const ENDPOINTS = {
   // TODO: verify against Evolus API reference
   AI_TOOL_RUN: (toolName) => `/ai-tools/${toolName}/run`,
   // TODO: verify against Evolus API reference
-  AGENT_CHAT: '/chat/completions',
-  // TODO: verify against Evolus API reference
   HEALTH_CHECK: '/health'
 };
 
@@ -29,24 +27,48 @@ const EVOLUS_WORKFLOW_ID = process.env.EVOLUS_WORKFLOW_ID || 'default-workflow';
 const EVOLUS_MODE = (process.env.EVOLUS_MODE || 'mock').toLowerCase();
 
 /**
+ * Escapes a string for safe use inside a RegExp.
+ * Without this, a key containing metacharacters (e.g. "ab.cd+12") was not
+ * redacted at all, and one containing "(" threw SyntaxError inside the catch
+ * handler, replacing the real error entirely.
+ */
+function escapeRegExp(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
  * Sanitizes errors to ensure API keys and sensitive tokens are never exposed.
  * @param {Error} error
  * @returns {Error}
  */
 function sanitizeError(error) {
-  const safeMessage = (error.message || 'Evolus API error')
-    .replace(new RegExp(EVOLUS_API_KEY, 'g'), '[REDACTED_API_KEY]')
+  let safeMessage = error.message || 'Evolus API error';
+
+  // new RegExp('', 'g') is a valid zero-width pattern that matches between
+  // every character. With no API key configured (the default in mock mode)
+  // this shredded every message into unreadable "[REDACTED]" interleave.
+  if (EVOLUS_API_KEY.length > 0) {
+    safeMessage = safeMessage.replace(new RegExp(escapeRegExp(EVOLUS_API_KEY), 'g'), '[REDACTED_API_KEY]');
+  }
+
+  safeMessage = safeMessage
     .replace(/Bearer\s+[A-Za-z0-9\-._~+/]+=*/gi, 'Bearer [REDACTED]')
     .replace(/X-ApiKey:\s*[^\s,]+/gi, 'X-ApiKey: [REDACTED]');
 
   const safeError = new Error(safeMessage);
   safeError.status = error.response ? error.response.status : (error.status || 500);
   safeError.code = error.code || 'EVOLUS_API_ERROR';
+  // Retain the upstream validation body, which is where the actionable detail
+  // lives, but only after the message above has been scrubbed.
+  if (error.response?.data) {
+    safeError.responseData = error.response.data;
+  }
   return safeError;
 }
 
 /**
- * Helper to execute an HTTP request with up to 2 retries on 5xx or network errors.
+ * Helper to execute an HTTP request with up to 2 retries on 5xx, 429, 408 or
+ * network errors.
  * @param {Function} requestFn
  * @param {number} retries
  * @param {number} delayMs
@@ -56,12 +78,16 @@ async function executeWithRetry(requestFn, retries = 2, delayMs = 1000) {
     try {
       return await requestFn();
     } catch (err) {
+      const status = err.response?.status;
       const isNetworkError = !err.response;
-      const is5xx = err.response && err.response.status >= 500 && err.response.status < 600;
+      const is5xx = status >= 500 && status < 600;
+      // 429 rate limiting and 408 request timeout are the two most likely
+      // transient Evolus failures and were previously not retried at all.
+      const isThrottled = status === 429 || status === 408;
 
-      if ((isNetworkError || is5xx) && attempt < retries) {
+      if ((isNetworkError || is5xx || isThrottled) && attempt < retries) {
         const nextDelay = delayMs * Math.pow(2, attempt);
-        logger.warn({ attempt: attempt + 1, nextDelay, status: err.response?.status }, 'Evolus API call failed, retrying...');
+        logger.warn({ attempt: attempt + 1, nextDelay, status }, 'Evolus API call failed, retrying...');
         await new Promise(res => setTimeout(res, nextDelay));
         continue;
       }
@@ -175,37 +201,6 @@ async function runAiTool(toolName, payload) {
 }
 
 /**
- * 4. chatWithAgent
- * Communicates with an Evolus agent using OpenAI-compatible payload.
- * @param {Array<{ role: string, content: string }>} messages
- * @param {object} options
- * @returns {Promise<object>}
- */
-async function chatWithAgent(messages, options = {}) {
-  if (EVOLUS_MODE === 'mock') {
-    logger.info('Evolus mock mode: chatWithAgent');
-    const fixturePath = path.resolve(__dirname, '../../fixtures/agent_chat.json');
-    return JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
-  }
-
-  return executeWithRetry(async () => {
-    const client = getHttpClient();
-    // TODO: verify against Evolus API reference
-    const url = ENDPOINTS.AGENT_CHAT;
-    const body = {
-      messages,
-      model: options.model || 'evolus-agent',
-      temperature: options.temperature ?? 0.1,
-      ...options
-    };
-    const response = await client.post(url, body, {
-      headers: { 'Content-Type': 'application/json' }
-    });
-    return response.data;
-  });
-}
-
-/**
  * Health check ping for check_evolus.js script.
  */
 async function checkHealth() {
@@ -226,8 +221,8 @@ module.exports = {
   executeWorkflow,
   getExecution,
   runAiTool,
-  chatWithAgent,
   checkHealth,
   ENDPOINTS,
-  sanitizeError
+  sanitizeError,
+  escapeRegExp
 };

@@ -1,2 +1,73 @@
-// purchaseOrders.json
-// Mock purchase order data for seeding. Owned by Ammar
+[
+  {
+    "poNumber": "PO-2001",
+    "supplierName": "Alpha Supplies",
+    "currency": "USD",
+    "lines": [
+      { "description": "Screwdriver", "qty": 20, "unitPrice": 5.0, "lineTotal": 100.0 },
+      { "description": "Hammer", "qty": 10, "unitPrice": 12.0, "lineTotal": 120.0 }
+    ],
+    "total": 242.0,
+    "status": "open"
+  },
+  {
+    "poNumber": "PO-3002",
+    "supplierName": "Omega Supplies",
+    "currency": "USD",
+    "lines": [
+      { "description": "Cable", "qty": 30, "unitPrice": 5.0, "lineTotal": 150.0 }
+    ],
+    "total": 150.0,
+    "status": "open"
+  },
+  {
+    "poNumber": "PO-4003",
+    "supplierName": "Sigma Parts",
+    "currency": "USD",
+    "lines": [
+      { "description": "Washer", "qty": 50, "unitPrice": 1.1, "lineTotal": 55.0 }
+    ],
+    "total": 55.0,
+    "status": "open"
+  },
+  {
+    "poNumber": "PO-5004",
+    "supplierName": "Theta Instruments",
+    "currency": "USD",
+    "lines": [
+      { "description": "Resistor", "qty": 200, "unitPrice": 0.11, "lineTotal": 22.0 }
+    ],
+    "total": 22.0,
+    "status": "open"
+  },
+  {
+    "poNumber": "PO-6005",
+    "supplierName": "Kappa Enterprises",
+    "currency": "USD",
+    "lines": [
+      { "description": "Widget", "qty": 10, "unitPrice": 10.0, "lineTotal": 100.0 }
+    ],
+    "total": 110.0,
+    "status": "open"
+  },
+  {
+    "poNumber": "PO-7006",
+    "supplierName": "Lambda Supplies",
+    "currency": "USD",
+    "lines": [
+      { "description": "Gasket", "qty": 30, "unitPrice": 3.0, "lineTotal": 90.0 }
+    ],
+    "total": 99.0,
+    "status": "open"
+  },
+  {
+    "poNumber": "PO-8007",
+    "supplierName": "Omega Banking",
+    "currency": "USD",
+    "lines": [
+      { "description": "Service Fee", "qty": 1, "unitPrice": 500.0, "lineTotal": 500.0 }
+    ],
+    "total": 550.0,
+    "status": "open"
+  }
+]

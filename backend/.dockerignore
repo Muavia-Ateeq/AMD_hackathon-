@@ -1,0 +1,18 @@
+node_modules/
+npm-debug.log
+.env
+.env.*
+!.env.example
+
+# Tests, coverage and evaluation artefacts
+tests/
+coverage/
+metrics/
+*.test.js
+
+# Local artefacts
+uploads/
+*.log
+.DS_Store
+.vscode/
+.idea/

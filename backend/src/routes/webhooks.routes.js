@@ -2,6 +2,7 @@
 // Routes for external webhooks. Owned by Ammar
 
 const express = require('express');
+const crypto = require('crypto');
 const Document = require('../models/Document');
 const { finalizeFromEvolus } = require('../services/pipelineService');
 const pino = require('pino');
@@ -56,19 +57,40 @@ function normalizeEvolusResult(payload = {}) {
 }
 
 /**
+ * Timing-safe string comparison. Returns false for differing lengths without
+ * leaking length information through an early exit.
+ */
+function safeEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const bufA = Buffer.from(a, 'utf8');
+  const bufB = Buffer.from(b, 'utf8');
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+/**
  * POST /api/webhooks/evolus
  * Called by Evolus when a workflow finishes.
  */
-router.post('/evolus', express.json(), async (req, res, next) => {
+router.post('/evolus', express.json({ limit: '2mb' }), async (req, res, next) => {
   try {
+    // Fail closed. An unauthenticated webhook lets anyone reachable on the
+    // network overwrite a document's extracted fields, issues and status.
     const configuredSecret = process.env.EVOLUS_WEBHOOK_SECRET;
-    if (configuredSecret) {
-      const incomingSecret = req.headers['x-webhook-secret'] || req.query.secret;
-      if (incomingSecret !== configuredSecret) {
-        return res.status(401).json({
-          error: { code: 'UNAUTHORIZED', message: 'Invalid webhook secret' }
-        });
-      }
+    if (!configuredSecret) {
+      logger.error('EVOLUS_WEBHOOK_SECRET is not configured; rejecting webhook');
+      return res.status(503).json({
+        error: { code: 'SERVICE_UNAVAILABLE', message: 'Webhook endpoint is not configured' }
+      });
+    }
+
+    // Secret is accepted from the header only. Query-string secrets leak into
+    // access logs, proxy logs and browser history.
+    const incomingSecret = req.get('x-webhook-secret');
+    if (!safeEqual(incomingSecret, configuredSecret)) {
+      return res.status(401).json({
+        error: { code: 'UNAUTHORIZED', message: 'Invalid webhook secret' }
+      });
     }
 
     const docId = req.query.docId || req.body.docId || req.body.documentId;
