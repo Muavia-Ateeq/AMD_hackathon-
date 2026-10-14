@@ -1,0 +1,19 @@
+[
+  {
+    "id": "doc-processing-001",
+    "fileName": "invoice-processing.pdf",
+    "uploadedAt": "2026-10-12T12:00:00.000Z",
+    "supplierName": "Zeta Manufacturing",
+    "language": "en",
+    "type": "invoice",
+    "status": "processing",
+    "extracted": null,
+    "confidence": {},
+    "issues": [],
+    "explanation": null,
+    "supplierReplyDraft": null,
+    "redactedFileUrl": null,
+    "timing": { "totalMs": null, "modelMs": null },
+    "costEstimate": null
+  }
+]

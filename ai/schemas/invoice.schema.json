@@ -1,0 +1,71 @@
+// invoice.schema.json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Invoice",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string"},
+    "fileName": {"type": "string"},
+    "uploadedAt": {"type": "string", "format": "date-time"},
+    "supplierName": {"type": "string"},
+    "language": {"type": "string"},
+    "type": {"enum": ["invoice", "delivery_note"]},
+    "status": {"enum": ["processing", "auto_approved", "needs_review", "rejected"]},
+    "extracted": {
+      "type": "object",
+      "properties": {
+        "invoiceNumber": {"type": ["string", "null"]},
+        "date": {"type": ["string", "null"], "format": "date"},
+        "currency": {"type": ["string", "null"]},
+        "poNumber": {"type": ["string", "null"]},
+        "lines": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "description": {"type": "string"},
+              "qty": {"type": "number"},
+              "unitPrice": {"type": "number"},
+              "lineTotal": {"type": "number"}
+            },
+            "required": ["description", "qty", "unitPrice", "lineTotal"]
+          }
+        },
+        "subtotal": {"type": "number"},
+        "tax": {"type": "number"},
+        "total": {"type": "number"},
+        "bankAccount": {"type": ["string", "null"]}
+      },
+      "required": ["invoiceNumber", "date", "currency", "poNumber", "lines", "subtotal", "tax", "total"]
+    },
+    "confidence": {
+      "type": "object",
+      "additionalProperties": {"type": "number", "minimum": 0, "maximum": 1}
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {"type": "string"},
+          "severity": {"enum": ["low", "medium", "high"]},
+          "field": {"type": "string"},
+          "message": {"type": "string"}
+        },
+        "required": ["type", "severity", "field", "message"]
+      }
+    },
+    "explanation": {"type": "string"},
+    "supplierReplyDraft": {"type": "string"},
+    "redactedFileUrl": {"type": "string"},
+    "timing": {
+      "type": "object",
+      "properties": {
+        "totalMs": {"type": "number"},
+        "modelMs": {"type": "number"}
+      }
+    },
+    "costEstimate": {"type": "number"}
+  },
+  "required": ["id", "fileName", "uploadedAt", "supplierName", "language", "type", "status", "extracted"]
+}

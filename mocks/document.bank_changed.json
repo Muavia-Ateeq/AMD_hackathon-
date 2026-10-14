@@ -1,0 +1,38 @@
+[
+  {
+    "id": "doc-bank-changed-001",
+    "fileName": "invoice-bank-changed.pdf",
+    "uploadedAt": "2026-10-06T03:00:00.000Z",
+    "supplierName": "Omega Banking",
+    "language": "en",
+    "type": "invoice",
+    "status": "needs_review",
+    "extracted": {
+      "invoiceNumber": "INV-7007",
+      "date": "2026-09-05",
+      "currency": "USD",
+      "poNumber": "PO-8007",
+      "lines": [
+        { "description": "Service Fee", "qty": 1, "unitPrice": 500.0, "lineTotal": 500.0 }
+      ],
+      "subtotal": 500.0,
+      "tax": 50.0,
+      "total": 550.0,
+      "bankAccount": "999888777"
+    },
+    "confidence": {"bankAccount":0.80},
+    "issues": [
+      {
+        "type": "BANK_DETAILS_CHANGED",
+        "severity": "high",
+        "field": "bankAccount",
+        "message": "Bank account differs from previous records"
+      }
+    ],
+    "explanation": "Bank account on the invoice does not match the supplier's known account.",
+    "supplierReplyDraft": "Dear Omega Banking,\n\nThe bank account on invoice INV-7007 differs from our records. Please confirm the correct details.",
+    "redactedFileUrl": "https://example.com/redacted/inv-7007.pdf",
+    "timing": {"totalMs":1600,"modelMs":520},
+    "costEstimate": 0.015
+  }
+]

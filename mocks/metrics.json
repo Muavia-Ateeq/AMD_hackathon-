@@ -1,0 +1,21 @@
+{
+  "countsByStatus": {
+    "processing": 12,
+    "auto_approved": 35,
+    "needs_review": 9,
+    "rejected": 4
+  },
+  "averageTotalMs": 1380,
+  "averageModelMs": 430,
+  "fieldAccuracy": 0.95,
+  "errorCatchRate": 0.018,
+  "falseAlarmRate": 0.009,
+  "minutesSavedPerDoc": 4.2,
+  "gpu": {
+    "name": "AMD Radeon Instinct MI250",
+    "model": "Llama-2-70B",
+    "tokensPerSecond": 4700,
+    "requestsPerMinute": 28
+  },
+  "costPerDocument": 0.014
+}

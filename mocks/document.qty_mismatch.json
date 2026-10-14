@@ -1,0 +1,38 @@
+[
+  {
+    "id": "doc-qty-mismatch",
+    "fileName": "invoice-qty-mismatch.pdf",
+    "uploadedAt": "2026-10-10T07:00:00.000Z",
+    "supplierName": "Sigma Parts",
+    "language": "en",
+    "type": "invoice",
+    "status": "needs_review",
+    "extracted": {
+      "invoiceNumber": "INV-3003",
+      "date": "2026-09-25",
+      "currency": "USD",
+      "poNumber": "PO-4003",
+      "lines": [
+        { "description": "Bolt", "qty": 100, "unitPrice": 0.5, "lineTotal": 50.0 }
+      ],
+      "subtotal": 50.0,
+      "tax": 5.0,
+      "total": 55.0,
+      "bankAccount": "222333444"
+    },
+    "confidence": {"qty": 0.88},
+    "issues": [
+      {
+        "type": "QTY_MISMATCH",
+        "severity": "medium",
+        "field": "qty",
+        "message": "Quantity (100) does not match PO quantity (80)"
+      }
+    ],
+    "explanation": "Quantity differs from purchase order.",
+    "supplierReplyDraft": "Dear Sigma Parts,\n\nThe quantity on invoice INV-3003 differs from our purchase order PO-4003. Please correct and resend.\n\nThanks.",
+    "redactedFileUrl": "https://example.com/redacted/inv-3003.pdf",
+    "timing": {"totalMs":1300,"modelMs":400},
+    "costEstimate": 0.011
+  }
+]

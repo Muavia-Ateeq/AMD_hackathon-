@@ -1,0 +1,16 @@
+# Normalize line endings on checkin so the Windows working copy does not
+# produce a CRLF<->LF diff storm on every commit.
+* text=auto eol=lf
+
+*.js  text eol=lf
+*.json text eol=lf
+*.md  text eol=lf
+*.yml text eol=lf
+*.yml text eol=lf
+
+# Binary assets stay binary
+*.pdf binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico  binary

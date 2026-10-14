@@ -1,0 +1,40 @@
+[
+  {
+    "id": "doc-total-mismatch",
+    "fileName": "invoice-total-mismatch.pdf",
+    "uploadedAt": "2026-10-11T08:00:00.000Z",
+    "supplierName": "Omega Supplies",
+    "language": "it",
+    "type": "invoice",
+    "status": "needs_review",
+    "extracted": {
+      "invoiceNumber": "INV-2002",
+      "date": "2026-09-28",
+      "currency": "EUR",
+      "poNumber": "PO-3002",
+      "lines": [
+        { "description": "Cable", "qty": 50, "unitPrice": 2.0, "lineTotal": 100.0 }
+      ],
+      "subtotal": 100.0,
+      "tax": 22.0,
+      "total": 115.0,
+      "bankAccount": "555666777"
+    },
+    "confidence": {
+      "total": 0.92
+    },
+    "issues": [
+      {
+        "type": "TOTAL_MISMATCH",
+        "severity": "high",
+        "field": "total",
+        "message": "Total (115.0) does not match PO amount (150.0)"
+      }
+    ],
+    "explanation": "Il totale dell'invoice non corrisponde al PO.",
+    "supplierReplyDraft": "Gentile Omega Supplies,\n\nAbbiamo riscontrato una discrepanza nel totale della fattura INV-2002 rispetto al nostro ordine PO-3002. Per favore verificate e inviate una correzione.\n\nCordiali saluti,\nTeam Acquisti",
+    "redactedFileUrl": "https://example.com/redacted/inv-2002.pdf",
+    "timing": { "totalMs": 1400, "modelMs": 480 },
+    "costEstimate": 0.013
+  }
+]

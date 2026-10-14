@@ -1,0 +1,39 @@
+{
+  "executionId": "exec-mock-987654",
+  "status": "COMPLETED",
+  "startedAt": "2026-10-14T08:00:00.000Z",
+  "completedAt": "2026-10-14T08:00:01.350Z",
+  "timing": {
+    "modelMs": 420,
+    "totalMs": 1350
+  },
+  "result": {
+    "document": {
+      "type": "invoice",
+      "language": "en",
+      "supplierName": "Alpha Supplies",
+      "extracted": {
+        "invoiceNumber": "INV-1001",
+        "date": "2026-09-30",
+        "currency": "USD",
+        "poNumber": "PO-2001",
+        "lines": [
+          { "description": "Screwdriver", "qty": 20, "unitPrice": 5.0, "lineTotal": 100.0 },
+          { "description": "Hammer", "qty": 10, "unitPrice": 12.0, "lineTotal": 120.0 }
+        ],
+        "subtotal": 220.0,
+        "tax": 22.0,
+        "total": 242.0,
+        "bankAccount": "111222333"
+      },
+      "confidence": {
+        "invoiceNumber": 0.99,
+        "date": 0.98,
+        "currency": 0.97,
+        "poNumber": 0.96,
+        "total": 0.99,
+        "bankAccount": 0.95
+      }
+    }
+  }
+}

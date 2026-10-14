@@ -1,0 +1,41 @@
+[
+  {
+    "id": "doc-low-conf-001",
+    "fileName": "invoice-low-conf.pdf",
+    "uploadedAt": "2026-10-07T04:00:00.000Z",
+    "supplierName": "Lambda Supplies",
+    "language": "en",
+    "type": "invoice",
+    "status": "needs_review",
+    "extracted": {
+      "invoiceNumber": "INV-6006",
+      "date": "2026-09-10",
+      "currency": "USD",
+      "poNumber": "PO-7006",
+      "lines": [
+        { "description": "Gasket", "qty": 30, "unitPrice": 3.0, "lineTotal": 90.0 }
+      ],
+      "subtotal": 90.0,
+      "tax": 9.0,
+      "total": 99.0,
+      "bankAccount": "123123123"
+    },
+    "confidence": {
+      "total": 0.70,
+      "bankAccount": 0.60
+    },
+    "issues": [
+      {
+        "type": "LOW_CONFIDENCE",
+        "severity": "low",
+        "field": "total",
+        "message": "Low confidence on total field (0.70)"
+      }
+    ],
+    "explanation": "Some fields have low confidence, please review.",
+    "supplierReplyDraft": "Dear Lambda Supplies,\n\nWe could not confidently verify some fields of your invoice INV-6006. Please confirm the details.",
+    "redactedFileUrl": "https://example.com/redacted/inv-6006.pdf",
+    "timing": { "totalMs": 1500, "modelMs": 500 },
+    "costEstimate": 0.014
+  }
+]

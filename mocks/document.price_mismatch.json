@@ -1,0 +1,38 @@
+[
+  {
+    "id": "doc-price-mismatch",
+    "fileName": "invoice-price-mismatch.pdf",
+    "uploadedAt": "2026-10-09T06:00:00.000Z",
+    "supplierName": "Theta Instruments",
+    "language": "en",
+    "type": "invoice",
+    "status": "needs_review",
+    "extracted": {
+      "invoiceNumber": "INV-4004",
+      "date": "2026-09-20",
+      "currency": "USD",
+      "poNumber": "PO-5004",
+      "lines": [
+        { "description": "Resistor", "qty": 200, "unitPrice": 0.1, "lineTotal": 20.0 }
+      ],
+      "subtotal": 20.0,
+      "tax": 2.0,
+      "total": 22.0,
+      "bankAccount": "333444555"
+    },
+    "confidence": {"unitPrice": 0.85},
+    "issues": [
+      {
+        "type": "PRICE_MISMATCH",
+        "severity": "high",
+        "field": "unitPrice",
+        "message": "Unit price (0.10) differs from PO unit price (0.12)"
+      }
+    ],
+    "explanation": "Price on invoice does not match the purchase order.",
+    "supplierReplyDraft": "Dear Theta Instruments,\n\nThe unit price on invoice INV-4004 differs from our purchase order PO-5004. Please revise and resend.\n\nThank you.",
+    "redactedFileUrl": "https://example.com/redacted/inv-4004.pdf",
+    "timing": {"totalMs":1350,"modelMs":420},
+    "costEstimate": 0.012
+  }
+]

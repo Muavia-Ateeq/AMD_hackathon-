@@ -1,0 +1,33 @@
+[
+  {
+    "id": "doc-duplicate-001",
+    "fileName": "invoice-duplicate-001.pdf",
+    "uploadedAt": "2026-10-08T05:00:00.000Z",
+    "supplierName": "Kappa Enterprises",
+    "language": "en",
+    "type": "invoice",
+    "status": "rejected",
+    "extracted": {
+      "invoiceNumber": "INV-5005",
+      "date": "2026-09-15",
+      "currency": "USD",
+      "poNumber": "PO-6005",
+      "lines": [
+        { "description": "Widget", "qty": 10, "unitPrice": 10.0, "lineTotal": 100.0 }
+      ],
+      "subtotal": 100.0,
+      "tax": 10.0,
+      "total": 110.0,
+      "bankAccount": "777888999"
+    },
+    "confidence": {"invoiceNumber":0.99},
+    "issues": [
+      { "type": "DUPLICATE_INVOICE", "severity": "high", "field": "invoiceNumber", "message": "Invoice number INV-5005 already processed" }
+    ],
+    "explanation": "Duplicate invoice detected.",
+    "supplierReplyDraft": "Dear Kappa Enterprises,\n\nWe have already processed invoice INV-5005. Please do not resend the same invoice.\n\nRegards,\nPurchasing Team",
+    "redactedFileUrl": "https://example.com/redacted/inv-5005.pdf",
+    "timing": {"totalMs":1250,"modelMs":350},
+    "costEstimate": 0.010
+  }
+]

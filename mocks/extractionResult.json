@@ -1,0 +1,15 @@
+// mocks/extractionResult.json
+{
+  "invoiceNumber": "INV-00123",
+  "date": "2026-10-01",
+  "currency": "USD",
+  "poNumber": "PO-456",
+  "lines": [
+    { "description": "Widget A", "qty": 10, "unitPrice": 15.0, "lineTotal": 150.0 },
+    { "description": "Widget B", "qty": 5, "unitPrice": 20.0, "lineTotal": 100.0 }
+  ],
+  "subtotal": 250.0,
+  "tax": 25.0,
+  "total": 275.0,
+  "bankAccount": "1234567890"
+}

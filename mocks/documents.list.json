@@ -1,0 +1,74 @@
+[
+  {
+    "id": "doc-001",
+    "fileName": "invoice-001.pdf",
+    "uploadedAt": "2026-10-13T10:00:00.000Z",
+    "supplierName": "Acme Corp",
+    "language": "en",
+    "type": "invoice",
+    "status": "auto_approved"
+  },
+  {
+    "id": "doc-002",
+    "fileName": "invoice-002.pdf",
+    "uploadedAt": "2026-10-13T11:00:00.000Z",
+    "supplierName": "Beta Ltd",
+    "language": "en",
+    "type": "invoice",
+    "status": "needs_review"
+  },
+  {
+    "id": "doc-003",
+    "fileName": "invoice-003.pdf",
+    "uploadedAt": "2026-10-13T12:00:00.000Z",
+    "supplierName": "Gamma LLC",
+    "language": "en",
+    "type": "invoice",
+    "status": "rejected"
+  },
+  {
+    "id": "doc-004",
+    "fileName": "delivery-001.pdf",
+    "uploadedAt": "2026-10-13T13:00:00.000Z",
+    "supplierName": "Delta Inc",
+    "language": "en",
+    "type": "delivery_note",
+    "status": "processing"
+  },
+  {
+    "id": "doc-005",
+    "fileName": "invoice-005.pdf",
+    "uploadedAt": "2026-10-13T14:00:00.000Z",
+    "supplierName": "Epsilon Co",
+    "language": "en",
+    "type": "invoice",
+    "status": "auto_approved"
+  },
+  {
+    "id": "doc-006",
+    "fileName": "invoice-006.pdf",
+    "uploadedAt": "2026-10-13T15:00:00.000Z",
+    "supplierName": "Zeta GmbH",
+    "language": "de",
+    "type": "invoice",
+    "status": "needs_review"
+  },
+  {
+    "id": "doc-007",
+    "fileName": "invoice-007.pdf",
+    "uploadedAt": "2026-10-13T16:00:00.000Z",
+    "supplierName": "Eta SA",
+    "language": "fr",
+    "type": "invoice",
+    "status": "rejected"
+  },
+  {
+    "id": "doc-008",
+    "fileName": "delivery-002.pdf",
+    "uploadedAt": "2026-10-13T17:00:00.000Z",
+    "supplierName": "Theta Ltd",
+    "language": "en",
+    "type": "delivery_note",
+    "status": "processing"
+  }
+]

@@ -1,0 +1,6 @@
+{
+  "tool": "pii-redaction",
+  "status": "SUCCESS",
+  "redactedFileUrl": "https://storage.mock.local/redacted/invoice-redacted.pdf",
+  "redactedFields": ["bankAccount", "contactEmail", "phoneNumber"]
+}
