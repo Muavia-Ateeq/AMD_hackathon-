@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'ammar/**', 'muawia/**', 'awais/**', 'moyeon/**']
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install backend dependencies
+        run: npm ci --prefix backend
+
+      - name: Verify documentation references resolve
+        run: node scripts/check_docs.js
+
+      - name: Run test suite
+        run: npm test
+
+      - name: Verify the server boots and serves /api/health
+        run: |
+          node backend/src/server.js &
+          SERVER_PID=$!
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:3000/api/health > /dev/null 2>&1; then
+              echo "Server healthy after ${i} attempts"
+              curl -fsS http://localhost:3000/api/health
+              kill $SERVER_PID
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Server did not become healthy"
+          kill $SERVER_PID || true
+          exit 1
+
+  docker:
+    name: Docker image builds
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build backend image
+        run: docker compose build backend
+
+      - name: Start MongoDB and backend
+        run: docker compose up -d mongodb backend
+
+      - name: Wait for backend healthcheck
+        run: |
+          for i in $(seq 1 60); do
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' supplier-doc-backend 2>/dev/null || echo starting)
+            echo "status: $STATUS"
+            if [ "$STATUS" = "healthy" ]; then
+              curl -fsS http://localhost:3000/api/health
+              exit 0
+            fi
+            if [ "$STATUS" = "unhealthy" ]; then
+              echo "Container reported unhealthy"
+              docker compose logs backend
+              exit 1
+            fi
+            sleep 2
+          done
+          echo "Timed out waiting for healthcheck"
+          docker compose logs backend
+          exit 1
+
+      - name: Seed reference data
+        run: docker compose exec -T backend node seed/seed.js
+
+      - name: Verify seeded data is served
+        run: |
+          curl -fsS http://localhost:3000/api/orders | tee /dev/stderr | grep -q 'PO-2001'
+
+      - name: Dump container logs
+        if: failure()
+        run: docker compose logs
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
