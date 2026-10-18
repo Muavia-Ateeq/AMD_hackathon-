@@ -35,6 +35,7 @@ app.get('/api/documents/:id', (req, res) => {
   // map known ids to fixture filenames
   const map = {
     'doc-clean-001': 'document.clean_auto_approved.json',
+    'doc-mock-001': 'document.clean_auto_approved.json',
     'doc-total-mismatch': 'document.total_mismatch.json',
     'doc-qty-mismatch': 'document.qty_mismatch.json',
     'doc-price-mismatch': 'document.price_mismatch.json',
@@ -84,7 +85,7 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-const PORT = process.env.MOCK_SERVER_PORT || 4000;
+const PORT = process.env.PORT || process.env.MOCK_SERVER_PORT || 4000;
 app.listen(PORT, () => {
   console.log(`Mock server listening on http://localhost:${PORT}`);
 });

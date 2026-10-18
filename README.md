@@ -33,6 +33,29 @@ rather than hanging.
 curl http://localhost:3000/api/health
 ```
 
+## Quick demo deployment (Vercel + Render, no MongoDB)
+
+For a deadline-friendly demo, deploy the frontend to Vercel and the included
+fixture-based mock API to Render. This uses sample data; it does not run live
+invoice extraction or the LLM.
+
+1. In Render, create a **Web Service** from this repository and branch. Leave
+   Root Directory blank; set Build Command to `npm ci` and Start Command to
+   `npm run mock`. Once created, set `CORS_ALLOWED_ORIGINS` to the Vercel site
+   origin (for example, `https://your-site.vercel.app`).
+2. In Vercel, import the same repository and branch. Set Root Directory to
+   `frontend`, Framework Preset to **Vite**, Build Command to `npm run build`,
+   and Output Directory to `dist`.
+3. Add Vercel environment variables `VITE_USE_MOCK=false` and
+   `VITE_API_URL=https://your-mock-api.onrender.com/api`, replacing the URL
+   with the Render service URL. Deploy (or redeploy after setting variables).
+
+MongoDB, Evolus credentials, and a vLLM model endpoint are not needed for this
+sample-data demo. For real invoice processing, deploy the actual backend and
+configure its database, Evolus extraction service, and reachable vLLM endpoint
+separately. The API has no user authentication; do not upload real supplier
+documents to a public demo.
+
 ---
 
 ## Configuration
